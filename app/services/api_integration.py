@@ -3,14 +3,53 @@ import asyncio
 import time
 import logging
 from typing import Optional, Dict
+from collections import OrderedDict
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# A simple in-memory cache: { "url": {"result": ..., "timestamp": ...} }
+# A simple in-memory cache with size limit: { "url": {"result": ..., "timestamp": ...} }
 # In production, use Redis.
-api_cache: Dict[str, Dict] = {}
 CACHE_TTL = 300  # 5 minutes
+MAX_CACHE_SIZE = 1000  # Maximum cache entries
+
+
+class LRUCache:
+    """Thread-safe LRU cache with TTL support"""
+    def __init__(self, max_size: int, ttl: int):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+        self.ttl = ttl
+        self.lock = asyncio.Lock()
+    
+    async def get(self, key: str) -> Optional[Dict]:
+        async with self.lock:
+            if key in self.cache:
+                entry = self.cache[key]
+                # Check if expired
+                if time.time() - entry["timestamp"] < self.ttl:
+                    # Move to end (most recently used)
+                    self.cache.move_to_end(key)
+                    return entry["result"]
+                else:
+                    # Expired, remove it
+                    del self.cache[key]
+            return None
+    
+    async def set(self, key: str, value: Dict):
+        async with self.lock:
+            # Remove oldest if at capacity
+            if len(self.cache) >= self.max_size and key not in self.cache:
+                self.cache.popitem(last=False)
+            
+            self.cache[key] = {
+                "result": value,
+                "timestamp": time.time()
+            }
+            self.cache.move_to_end(key)
+
+
+api_cache = LRUCache(MAX_CACHE_SIZE, CACHE_TTL)
 
 
 class APIManager:
@@ -23,11 +62,10 @@ class APIManager:
         Orchestrates parallel checks to all external providers.
         """
         # 1. Check Cache first
-        if url in api_cache:
-            entry = api_cache[url]
-            if time.time() - entry["timestamp"] < CACHE_TTL:
-                logger.info(f"Cache Hit for {url}")
-                return entry["result"]
+        cached_result = await api_cache.get(url)
+        if cached_result:
+            logger.info(f"Cache Hit for {url}")
+            return cached_result
 
         # 2. Define the tasks (Parallel Execution)
         async with aiohttp.ClientSession() as session:
@@ -40,14 +78,17 @@ class APIManager:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 3. Process Results
+        # Log any exceptions that occurred
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                api_name = ["Google Safe Browsing", "PhishTank"][i]
+                logger.warning(f"{api_name} check failed: {result}")
+        
         # If ANY API says "malicious", we flag it
         for result in results:
             if isinstance(result, dict) and result.get("is_malicious"):
                 # Cache the result
-                api_cache[url] = {
-                    "result": result,
-                    "timestamp": time.time()
-                }
+                await api_cache.set(url, result)
                 return result
 
         # All APIs say safe or failed
@@ -58,10 +99,7 @@ class APIManager:
         }
         
         # Cache safe result too
-        api_cache[url] = {
-            "result": safe_result,
-            "timestamp": time.time()
-        }
+        await api_cache.set(url, safe_result)
         
         return safe_result
 
@@ -71,7 +109,7 @@ class APIManager:
         Note: This is a MOCK implementation. Real implementation requires API key.
         """
         if not self.google_api_key:
-            logger.info("Google Safe Browsing API key not configured - skipping check")
+            logger.debug("Google Safe Browsing API key not configured - skipping check")
             return None
 
         # REAL IMPLEMENTATION (commented out - uncomment when you have API key):
@@ -90,7 +128,7 @@ class APIManager:
         #         }
         #     }
         #     
-        #     async with session.post(api_url, json=payload, timeout=5) as response:
+        #     async with session.post(api_url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as response:
         #         if response.status == 200:
         #             data = await response.json()
         #             if data.get("matches"):
@@ -106,7 +144,7 @@ class APIManager:
         #     return None
 
         # MOCK IMPLEMENTATION (remove when using real API):
-        logger.info(f"Mock Google Safe Browsing check for {url}")
+        logger.debug(f"Mock Google Safe Browsing check for {url}")
         return None  # Mock: Always returns safe
 
     async def _check_phishtank(self, session: aiohttp.ClientSession, url: str) -> Optional[Dict]:
@@ -132,7 +170,11 @@ class APIManager:
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as response:
                 if response.status == 200:
-                    result = await response.json()
+                    try:
+                        result = await response.json()
+                    except aiohttp.ContentTypeError as e:
+                        logger.error(f"PhishTank returned invalid JSON: {e}")
+                        return None
                     
                     # PhishTank response structure:
                     # {"meta": {...}, "results": {"in_database": true/false, "phish_id": ..., "verified": ...}}
