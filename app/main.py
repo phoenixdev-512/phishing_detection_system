@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.core.config import settings
 from app.api.endpoints import router as api_router
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -22,11 +25,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include the router
+# Mount static files directory
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Include the API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def read_root():
+    """Serve the web dashboard"""
+    static_file = os.path.join(static_dir, "index.html")
+    if os.path.exists(static_file):
+        return FileResponse(static_file)
     return {"message": "Phishing URL Analyzer Backend is Running"}
 
 if __name__ == "__main__":
