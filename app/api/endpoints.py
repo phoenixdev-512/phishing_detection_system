@@ -3,6 +3,7 @@ from app.schemas.url_schema import URLRequest, AnalysisResult
 from app.services.preprocessing import preprocessor  # Import the service
 from app.services.database import db_service  # Import the new DB service
 from app.services.api_integration import api_manager  # Import the API manager
+from app.services.heuristics import heuristic_engine  # Import the heuristic engine
 import logging
 
 # Set up logging
@@ -52,14 +53,38 @@ async def scan_url(request: URLRequest):
                 reasons=[f"Flagged by {api_result.get('source', 'external API')}."]
             )
         
-        # No threats found in DB or APIs
-        return AnalysisResult(
-            url=clean_url,
-            status="safe",
-            risk_score=0,
-            verdict_source="Clean (DB + API Check)",
-            reasons=["No match in local database or external threat feeds."]
-        )
+        # --- PHASE 5 INTEGRATION ---
+        # Run Heuristic Analysis (if not caught by DB or APIs)
+        heuristic_result = heuristic_engine.analyze(url_components)
+        
+        # Determine verdict based on heuristic risk score
+        if heuristic_result["risk_score"] >= 70:
+            # High risk based on heuristics
+            return AnalysisResult(
+                url=clean_url,
+                status="suspicious",
+                risk_score=heuristic_result["risk_score"],
+                verdict_source="Heuristic Analysis",
+                reasons=heuristic_result["reasons"]
+            )
+        elif heuristic_result["risk_score"] >= 40:
+            # Medium risk - suspicious but not conclusive
+            return AnalysisResult(
+                url=clean_url,
+                status="suspicious",
+                risk_score=heuristic_result["risk_score"],
+                verdict_source="Heuristic Analysis",
+                reasons=heuristic_result["reasons"]
+            )
+        else:
+            # Low risk based on heuristics
+            return AnalysisResult(
+                url=clean_url,
+                status="safe",
+                risk_score=heuristic_result["risk_score"],
+                verdict_source="Complete Analysis (DB + API + Heuristics)",
+                reasons=heuristic_result["reasons"]
+            )
         
     except HTTPException as e:
         raise e
