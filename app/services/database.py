@@ -26,13 +26,15 @@ class BloomFilter:
         """Add an item to the filter"""
         for i in range(self.hash_count):
             # Create k distinct hash functions
-            digest = mmh3.hash(item, i) % self.size
+            # Use abs() to ensure positive index (mmh3.hash can return negative values)
+            digest = abs(mmh3.hash(item, i)) % self.size
             self.bit_array[digest] = 1
 
     def check(self, item):
         """Check for existence of an item"""
         for i in range(self.hash_count):
-            digest = mmh3.hash(item, i) % self.size
+            # Use abs() to ensure positive index
+            digest = abs(mmh3.hash(item, i)) % self.size
             if self.bit_array[digest] == 0:
                 return False  # Definitely not present
         return True  # Possibly present
@@ -79,6 +81,14 @@ class PhishingDatabase:
         logger.info("Loading Database into Bloom Filter...")
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+        
+        # Get count first to warn about large databases
+        cursor.execute("SELECT COUNT(*) FROM malicious_urls")
+        count = cursor.fetchone()[0]
+        
+        if count > 100000:
+            logger.warning(f"Database contains {count} URLs, exceeding designed capacity of 100k. Consider increasing Bloom Filter size.")
+        
         cursor.execute("SELECT url FROM malicious_urls")
         rows = cursor.fetchall()
         for row in rows:
