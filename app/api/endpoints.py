@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.schemas.url_schema import URLRequest, AnalysisResult
 from app.services.preprocessing import preprocessor  # Import the service
+from app.services.database import db_service  # Import the new DB service
 import logging
 
 # Set up logging
@@ -15,26 +16,37 @@ async def scan_url(request: URLRequest):
     and returns a risk assessment.
     """
     try:
-        # --- PHASE 2 INTEGRATION ---
-        # Normalize and extract components
+        # Phase 2: Preprocessing
         url_components = preprocessor.normalize(str(request.url))
+        clean_url = url_components['full_url']
         
-        logger.info(f"Received URL for scanning: {url_components['full_url']}")
+        logger.info(f"Received URL for scanning: {clean_url}")
+
+        # --- PHASE 3 INTEGRATION ---
+        # Check Local Database (Speed Layer)
+        db_match = db_service.check_url(clean_url)
         
-        # For now, we will return the "cleaned" URL in the result
-        # In later phases, 'url_components' will be passed to DB and Heuristics
+        if db_match:
+            # STOP! We found it in the local blacklist.
+            # Return immediately without calling external APIs (saving time & money)
+            return AnalysisResult(
+                url=clean_url,
+                status="malicious",
+                risk_score=db_match["risk_score"],
+                verdict_source=f"Local Database ({db_match['source']})",
+                reasons=[f"Exact match found in local blacklist."]
+            )
+
+        # ... If not found, logic proceeds to External APIs (Phase 4) ...
+        
         return AnalysisResult(
-            url=url_components['full_url'],  # Return the clean, Punycode version
-            status="unknown",
+            url=clean_url,
+            status="safe",  # Placeholder until Phase 4/5
             risk_score=0,
-            verdict_source="Phase 2 Preprocessing",
-            reasons=[
-                "Preprocessing complete.",
-                f"Detected Protocol: {url_components['protocol']}",
-                f"Registered Domain: {url_components['registered_domain']}",
-                f"Is IP Address: {url_components['is_ip_address']}"
-            ]
+            verdict_source="Clean (Local Check)",
+            reasons=["No match in local database."]
         )
+        
     except HTTPException as e:
         raise e
     except Exception as e:

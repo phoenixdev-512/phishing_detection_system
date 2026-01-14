@@ -7,3 +7,5 @@ requests==2.31.0
 tldextract==5.1.1
 python-whois==0.8.0
 aiohttp==3.13.3
+bitarray==2.8.1
+mmh3==4.0.1
