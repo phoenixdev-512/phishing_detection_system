@@ -62,12 +62,13 @@ class RiskAggregator:
             score = heuristic_result.get("risk_score", 0)
             final_reasons = heuristic_result.get("reasons", [])
             details["layers_triggered"].append("heuristics")
-            
-            # Add additional context about what was analyzed
-            if not db_result:
-                details["layers_triggered"].append("database_clean")
-            if not (api_result and api_result.get("is_malicious")):
-                details["layers_triggered"].append("api_clean")
+        
+        # Add transparency about clean checks
+        # Always report which layers were checked
+        if db_result is None:
+            details["layers_triggered"].append("database_clean")
+        if api_result is None or not api_result.get("is_malicious"):
+            details["layers_triggered"].append("api_clean")
         
         # 3. Determine Final Status
         status = self._determine_status(score)
@@ -111,6 +112,11 @@ class RiskAggregator:
     def get_recommendation(self, status: str, score: int) -> str:
         """
         Provide actionable recommendations based on the verdict.
+        
+        Score thresholds align with _determine_status classification:
+        - 70-100: Malicious/High risk
+        - 40-69: Suspicious/Medium risk
+        - 0-39: Safe/Low risk
         """
         if status == "malicious":
             return "⛔ DO NOT VISIT - This URL is highly dangerous. It matches known phishing databases or exhibits multiple high-risk characteristics."

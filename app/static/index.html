@@ -398,7 +398,7 @@
             if (data.details && data.details.url_features) {
                 const features = data.details.url_features;
                 document.getElementById('domain').textContent = features.domain || 'N/A';
-                document.getElementById('urlLength').textContent = features.url_length + ' characters';
+                document.getElementById('urlLength').textContent = (features.url_length || 0) + ' characters';
                 document.getElementById('isIP').textContent = features.is_ip ? 'Yes ⚠️' : 'No ✓';
             }
 

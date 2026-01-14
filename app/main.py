@@ -36,8 +36,10 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.get("/")
 def read_root():
     """Serve the web dashboard"""
-    static_file = os.path.join(static_dir, "index.html")
-    if os.path.exists(static_file):
+    # Use absolute path to prevent directory traversal
+    static_file = os.path.abspath(os.path.join(static_dir, "index.html"))
+    # Verify the file is within the static directory
+    if os.path.exists(static_file) and static_file.startswith(os.path.abspath(static_dir)):
         return FileResponse(static_file)
     return {"message": "Phishing URL Analyzer Backend is Running"}
 
