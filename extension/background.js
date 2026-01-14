@@ -57,12 +57,22 @@ async function checkURL(url, tabId) {
       }
     });
 
-    // If the site is malicious or highly suspicious, inject warning
+    // If the site is malicious or highly suspicious, send message to content script
     if (result.status === 'malicious' || result.risk_score >= 70) {
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        func: showWarningBanner,
-        args: [result]
+      chrome.tabs.sendMessage(tabId, {
+        action: 'showWarning',
+        result: result
+      }).catch(err => {
+        // Content script might not be ready yet, fallback to executeScript
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ['content.js']
+        }).then(() => {
+          chrome.tabs.sendMessage(tabId, {
+            action: 'showWarning',
+            result: result
+          });
+        }).catch(console.error);
       });
     }
 
@@ -81,45 +91,4 @@ async function checkURL(url, tabId) {
       }
     });
   }
-}
-
-// Function that will be injected into the page
-function showWarningBanner(result) {
-  // Remove any existing warning
-  const existingWarning = document.getElementById('phishing-analyzer-warning');
-  if (existingWarning) {
-    existingWarning.remove();
-  }
-
-  // Create warning banner
-  const banner = document.createElement('div');
-  banner.id = 'phishing-analyzer-warning';
-  banner.className = 'phishing-warning-banner';
-  
-  const statusEmoji = result.status === 'malicious' ? '🔴' : '⚠️';
-  const statusText = result.status === 'malicious' ? 'MALICIOUS' : 'SUSPICIOUS';
-  
-  banner.innerHTML = `
-    <div class="phishing-warning-content">
-      <div class="phishing-warning-header">
-        <span class="phishing-warning-icon">${statusEmoji}</span>
-        <span class="phishing-warning-title">
-          ${statusText} WEBSITE DETECTED - Risk Score: ${result.risk_score}/100
-        </span>
-        <button class="phishing-warning-close" onclick="this.parentElement.parentElement.parentElement.remove()">✕</button>
-      </div>
-      <div class="phishing-warning-body">
-        <p><strong>${result.recommendation}</strong></p>
-        <p>Source: ${result.verdict_source}</p>
-        <details>
-          <summary>View Detection Details</summary>
-          <ul>
-            ${result.reasons.map(reason => `<li>${reason}</li>`).join('')}
-          </ul>
-        </details>
-      </div>
-    </div>
-  `;
-
-  document.body.insertBefore(banner, document.body.firstChild);
 }

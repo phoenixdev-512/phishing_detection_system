@@ -27,27 +27,69 @@ function showWarningBanner(result) {
   const statusEmoji = result.status === 'malicious' ? '🔴' : '⚠️';
   const statusText = result.status === 'malicious' ? 'MALICIOUS' : 'SUSPICIOUS';
   
-  banner.innerHTML = `
-    <div class="phishing-warning-content">
-      <div class="phishing-warning-header">
-        <span class="phishing-warning-icon">${statusEmoji}</span>
-        <span class="phishing-warning-title">
-          ${statusText} WEBSITE DETECTED - Risk Score: ${result.risk_score}/100
-        </span>
-        <button class="phishing-warning-close" onclick="this.parentElement.parentElement.parentElement.remove()">✕</button>
-      </div>
-      <div class="phishing-warning-body">
-        <p><strong>${result.recommendation}</strong></p>
-        <p>Source: ${result.verdict_source}</p>
-        <details>
-          <summary>View Detection Details</summary>
-          <ul>
-            ${result.reasons.map(reason => `<li>${reason}</li>`).join('')}
-          </ul>
-        </details>
-      </div>
-    </div>
-  `;
+  // Create elements safely to prevent XSS
+  const content = document.createElement('div');
+  content.className = 'phishing-warning-content';
+  
+  const header = document.createElement('div');
+  header.className = 'phishing-warning-header';
+  
+  const icon = document.createElement('span');
+  icon.className = 'phishing-warning-icon';
+  icon.textContent = statusEmoji;
+  
+  const title = document.createElement('span');
+  title.className = 'phishing-warning-title';
+  title.textContent = `${statusText} WEBSITE DETECTED - Risk Score: ${result.risk_score}/100`;
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'phishing-warning-close';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', () => {
+    banner.remove();
+  });
+  
+  header.appendChild(icon);
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  
+  const body = document.createElement('div');
+  body.className = 'phishing-warning-body';
+  
+  const recommendationP = document.createElement('p');
+  const recommendationStrong = document.createElement('strong');
+  recommendationStrong.textContent = result.recommendation || 'No recommendation available';
+  recommendationP.appendChild(recommendationStrong);
+  
+  const sourceP = document.createElement('p');
+  sourceP.textContent = `Source: ${result.verdict_source || 'Unknown'}`;
+  
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = 'View Detection Details';
+  details.appendChild(summary);
+  
+  const reasonsList = document.createElement('ul');
+  if (result.reasons && result.reasons.length > 0) {
+    result.reasons.forEach(reason => {
+      const li = document.createElement('li');
+      li.textContent = reason;
+      reasonsList.appendChild(li);
+    });
+  } else {
+    const li = document.createElement('li');
+    li.textContent = 'No specific reasons provided';
+    reasonsList.appendChild(li);
+  }
+  details.appendChild(reasonsList);
+  
+  body.appendChild(recommendationP);
+  body.appendChild(sourceP);
+  body.appendChild(details);
+  
+  content.appendChild(header);
+  content.appendChild(body);
+  banner.appendChild(content);
 
   document.body.insertBefore(banner, document.body.firstChild);
 }
