@@ -1,5 +1,4 @@
 import re
-import socket
 from urllib.parse import urlparse, urlunparse
 import tldextract
 from fastapi import HTTPException
@@ -31,18 +30,20 @@ class URLPreprocessor:
         # This converts characters like 'рaypal.com' (Cyrillic 'a') into 'xn--pypal-4ve.com'
         try:
             parsed_initial = urlparse(clean_url)
-            # Encode the hostname to IDNA (Punycode)
-            ascii_host = parsed_initial.hostname.encode('idna').decode('ascii')
-            # Reconstruct the URL with the ASCII hostname
-            # urlparse is immutable, so we replace components in a list logic
-            clean_url = urlunparse((
-                parsed_initial.scheme,
-                ascii_host,
-                parsed_initial.path,
-                parsed_initial.params,
-                parsed_initial.query,
-                parsed_initial.fragment
-            ))
+            # Check if hostname exists before encoding
+            if parsed_initial.hostname:
+                # Encode the hostname to IDNA (Punycode)
+                ascii_host = parsed_initial.hostname.encode('idna').decode('ascii')
+                # Reconstruct the URL with the ASCII hostname
+                # urlparse is immutable, so we replace components in a list logic
+                clean_url = urlunparse((
+                    parsed_initial.scheme,
+                    ascii_host,
+                    parsed_initial.path,
+                    parsed_initial.params,
+                    parsed_initial.query,
+                    parsed_initial.fragment
+                ))
         except (UnicodeError, AttributeError):
             # If conversion fails, the domain might be malformed or already ASCII
             pass
