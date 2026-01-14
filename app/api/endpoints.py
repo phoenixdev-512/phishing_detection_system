@@ -1,5 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from app.schemas.url_schema import URLRequest, AnalysisResult
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -18,7 +22,7 @@ async def scan_url(request: URLRequest):
     # 3. api_integration.check_external(normalized_url)
     # 4. heuristics.analyze(normalized_url)
     
-    print(f"Received URL for scanning: {input_url}")
+    logger.info(f"Received URL for scanning: {input_url}")
 
     return AnalysisResult(
         url=input_url,
