@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.schemas.url_schema import URLRequest, AnalysisResult
 from app.services.preprocessing import preprocessor  # Import the service
 from app.services.database import db_service  # Import the new DB service
+from app.services.api_integration import api_manager  # Import the API manager
 import logging
 
 # Set up logging
@@ -37,14 +38,27 @@ async def scan_url(request: URLRequest):
                 reasons=[f"Exact match found in local blacklist."]
             )
 
-        # ... If not found, logic proceeds to External APIs (Phase 4) ...
+        # --- PHASE 4 INTEGRATION ---
+        # Check External APIs (if not in local DB)
+        api_result = await api_manager.check_url(clean_url)
         
+        if api_result and api_result.get("is_malicious"):
+            # External API flagged it as malicious
+            return AnalysisResult(
+                url=clean_url,
+                status="malicious",
+                risk_score=api_result.get("risk_score", 85),
+                verdict_source=api_result.get("source", "External API"),
+                reasons=[f"Flagged by {api_result.get('source', 'external API')}."]
+            )
+        
+        # No threats found in DB or APIs
         return AnalysisResult(
             url=clean_url,
-            status="safe",  # Placeholder until Phase 4/5
+            status="safe",
             risk_score=0,
-            verdict_source="Clean (Local Check)",
-            reasons=["No match in local database."]
+            verdict_source="Clean (DB + API Check)",
+            reasons=["No match in local database or external threat feeds."]
         )
         
     except HTTPException as e:
