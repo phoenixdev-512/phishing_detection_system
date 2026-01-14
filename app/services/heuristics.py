@@ -106,7 +106,7 @@ class HeuristicEngine:
         Note: WHOIS lookups can be slow and may fail.
         """
         try:
-            # Timeout after 5 seconds to prevent hanging
+            # WHOIS lookup - may timeout or fail in restricted environments
             w = whois.whois(domain)
             
             # Extract creation date
@@ -132,6 +132,7 @@ class HeuristicEngine:
         
         except Exception as e:
             # WHOIS lookup failed - don't penalize but log it
+            # This is expected in environments with network restrictions
             logger.debug(f"WHOIS lookup failed for {domain}: {e}")
             pass
         
@@ -157,10 +158,12 @@ class HeuristicEngine:
         
         # Check 3: Excessive Subdomains
         if subdomain:
-            subdomain_count = subdomain.count('.') + 1
+            # Count subdomain parts by splitting on dots
+            subdomain_parts = subdomain.split('.')
+            subdomain_count = len(subdomain_parts)
             if subdomain_count >= 3:
                 score += 20
-                reasons.append(f"URL has {subdomain_count} subdomain levels (suspicious).")
+                reasons.append(f"URL has {subdomain_count} subdomain parts (suspicious).")
         
         return (score, reasons)
 
