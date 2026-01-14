@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phishing URL Analyzer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #e0e0e0;
+      padding: 0;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .header h1 {
+      font-size: 18px;
+      margin-bottom: 4px;
+      color: white;
+    }
+
+    .header p {
+      font-size: 12px;
+      opacity: 0.9;
+      color: white;
+    }
+
+    .content {
+      padding: 20px;
+    }
+
+    .url-display {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      word-break: break-all;
+      font-size: 12px;
+      color: #a0a0a0;
+    }
+
+    .status-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .status-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .status-badge {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .status-safe {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      border: 1px solid #22c55e;
+    }
+
+    .status-suspicious {
+      background: rgba(234, 179, 8, 0.2);
+      color: #eab308;
+      border: 1px solid #eab308;
+    }
+
+    .status-malicious {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid #ef4444;
+    }
+
+    .status-error {
+      background: rgba(156, 163, 175, 0.2);
+      color: #9ca3af;
+      border: 1px solid #9ca3af;
+    }
+
+    .risk-score {
+      font-size: 32px;
+      font-weight: bold;
+      color: white;
+    }
+
+    .risk-label {
+      font-size: 10px;
+      color: #a0a0a0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .recommendation {
+      background: rgba(99, 102, 241, 0.1);
+      border-left: 3px solid #6366f1;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .info-section {
+      margin-bottom: 16px;
+    }
+
+    .info-title {
+      font-size: 11px;
+      color: #a0a0a0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .info-content {
+      font-size: 12px;
+      color: #e0e0e0;
+      line-height: 1.5;
+    }
+
+    .reasons-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .reasons-list li {
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .reasons-list li:last-child {
+      border-bottom: none;
+    }
+
+    .reasons-list li:before {
+      content: "• ";
+      color: #6366f1;
+      font-weight: bold;
+      margin-right: 8px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
+      color: #a0a0a0;
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .footer {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 12px;
+      text-align: center;
+      font-size: 10px;
+      color: #808080;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .footer a {
+      color: #6366f1;
+      text-decoration: none;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🛡️ Phishing URL Analyzer</h1>
+    <p>Multi-Layer Threat Detection</p>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="loading-spinner"></div>
+    <p>Analyzing current page...</p>
+  </div>
+
+  <div id="results" class="content" style="display: none;">
+    <div class="url-display" id="url"></div>
+
+    <div class="status-card">
+      <div class="status-header">
+        <span class="status-badge" id="status"></span>
+        <div style="text-align: right;">
+          <div class="risk-score" id="risk-score"></div>
+          <div class="risk-label">Risk Score</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="recommendation" id="recommendation"></div>
+
+    <div class="info-section">
+      <div class="info-title">Verdict Source</div>
+      <div class="info-content" id="verdict-source"></div>
+    </div>
+
+    <div class="info-section">
+      <div class="info-title">Detection Reasons</div>
+      <ul class="reasons-list" id="reasons"></ul>
+    </div>
+  </div>
+
+  <div class="footer">
+    Powered by <a href="http://127.0.0.1:8000" target="_blank">Phishing Detection API</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
