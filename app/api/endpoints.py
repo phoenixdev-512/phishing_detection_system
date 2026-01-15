@@ -55,6 +55,14 @@ async def scan_url(request: URLRequest):
             aggregated_result["risk_score"]
         )
         
+        # LOGGING: Save scan result to history
+        db_service.log_scan(
+            url=clean_url,
+            status=aggregated_result["status"],
+            risk_score=aggregated_result["risk_score"],
+            source=aggregated_result["verdict_source"]
+        )
+        
         return AnalysisResult(
             url=clean_url,
             status=aggregated_result["status"],
@@ -71,3 +79,23 @@ async def scan_url(request: URLRequest):
         # Fallback for unexpected parsing errors
         logger.error(f"Error processing URL: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Error processing URL: {str(e)}")
+
+
+@router.get("/history")
+async def get_history(limit: int = 20):
+    """Get recent scan history."""
+    try:
+        return db_service.get_recent_scans(limit)
+    except Exception as e:
+        logger.error(f"Error fetching history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch history")
+
+
+@router.get("/stats")
+async def get_stats():
+    """Get dashboard statistics."""
+    try:
+        return db_service.get_stats()
+    except Exception as e:
+        logger.error(f"Error fetching stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch stats")

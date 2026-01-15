@@ -20,6 +20,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       showError('No scan data available for this page. The page may still be loading.');
     }
 
+    // Dashboard Button Handler
+    document.getElementById('openDashboard').addEventListener('click', () => {
+        chrome.tabs.create({ url: 'http://127.0.0.1:8000/' });
+    });
+
   } catch (error) {
     console.error('Error loading popup:', error);
     showError('Error loading scan results: ' + error.message);

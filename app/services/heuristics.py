@@ -1,4 +1,7 @@
-import whois
+try:
+    import whois
+except ImportError:
+    whois = None
 import datetime
 import logging
 from difflib import SequenceMatcher

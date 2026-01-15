@@ -238,7 +238,27 @@
       <div class="info-title">Detection Reasons</div>
       <ul class="reasons-list" id="reasons"></ul>
     </div>
+    <div class="actions" style="margin-top: 20px; text-align: center;">
+      <button id="openDashboard" class="action-btn">📊 Open Full Dashboard</button>
+    </div>
   </div>
+
+  <style>
+    .action-btn {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        width: 100%;
+        transition: opacity 0.2s;
+    }
+    .action-btn:hover {
+        opacity: 0.9;
+    }
+  </style>
 
   <div class="footer">
     Multi-Layer Threat Detection System
