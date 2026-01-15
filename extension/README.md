@@ -6,22 +6,22 @@ A Chrome extension that provides **real-time phishing detection** for every webs
 
 ## Features
 
-### 🔍 Real-Time Scanning
+### Real-Time Scanning
 - Automatically scans every website you visit
 - Works silently in the background
 - No manual input required
 
-### ⚠️ Instant Warnings
+### Instant Warnings
 - Displays prominent warning banners on malicious/suspicious sites
 - Color-coded alerts (Red for malicious, Yellow for suspicious)
 - Shows risk score (0-100) and detection reasons
 
-### 📊 Detailed Analysis
+### Detailed Analysis
 - Click the extension icon to see full analysis
 - View risk score, verdict source, and detection layers
 - See all reasons for the security verdict
 
-### 🛡️ Multi-Layer Detection
+### Multi-Layer Detection
 - Local database checks
 - External API threat intelligence
 - Heuristic analysis for zero-day threats

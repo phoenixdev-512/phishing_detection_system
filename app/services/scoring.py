@@ -119,14 +119,14 @@ class RiskAggregator:
         - 0-39: Safe/Low risk
         """
         if status == "malicious":
-            return "⛔ DO NOT VISIT - This URL is highly dangerous. It matches known phishing databases or exhibits multiple high-risk characteristics."
+            return "DO NOT VISIT - This URL is highly dangerous. It matches known phishing databases or exhibits multiple high-risk characteristics."
         elif status == "suspicious":
             if score >= 60:
-                return "⚠️ HIGH CAUTION - This URL shows strong indicators of phishing. Proceed only if you absolutely trust the source."
+                return "HIGH CAUTION - This URL shows strong indicators of phishing. Proceed only if you absolutely trust the source."
             else:
-                return "⚠️ CAUTION - This URL has some suspicious characteristics. Verify the sender and domain carefully before proceeding."
+                return "CAUTION - This URL has some suspicious characteristics. Verify the sender and domain carefully before proceeding."
         else:
-            return "✅ SAFE - No immediate threats detected. However, always verify the URL matches your intended destination."
+            return "SAFE - No immediate threats detected. However, always verify the URL matches your intended destination."
 
 
 # Singleton instance

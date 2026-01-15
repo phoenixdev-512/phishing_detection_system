@@ -1,10 +1,10 @@
 # Phishing URL Analyzer - Complete System Documentation
 
-## 🎯 Project Overview
+## Project Overview
 
 A comprehensive multi-layer phishing URL detection system with real-time protection capabilities. The system combines local database lookups, external threat intelligence APIs, heuristic analysis, and machine learning-ready architecture to provide instant, accurate phishing detection.
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -39,7 +39,7 @@ A comprehensive multi-layer phishing URL detection system with real-time protect
             └────────────────┘
 ```
 
-## 📊 Detection Layers
+## Detection Layers
 
 ### Layer 0: Preprocessing
 - **URL Sanitization**: Removes whitespace, control characters
@@ -95,7 +95,7 @@ A comprehensive multi-layer phishing URL detection system with real-time protect
 - **Transparency**: Detailed explanations for all verdicts
 - **Recommendations**: Actionable guidance for users
 
-## 🌐 Web Dashboard
+## Web Dashboard
 
 ### Features
 - **Dark Mode Interface**: Modern, professional design
@@ -112,7 +112,7 @@ A comprehensive multi-layer phishing URL detection system with real-time protect
 - Gradient backgrounds (#1a1a2e to #16213e)
 - Served via FastAPI static files
 
-## 🔌 Browser Extension
+## Browser Extension
 
 ### Features
 - **Real-Time Protection**: Automatic scanning on page navigation
@@ -134,7 +134,7 @@ A comprehensive multi-layer phishing URL detection system with real-time protect
 3. Enable in `chrome://extensions/`
 4. Ensure backend running at localhost:8000
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 ### Backend
 - **FastAPI**: Modern async Python framework
@@ -158,7 +158,7 @@ A comprehensive multi-layer phishing URL detection system with real-time protect
 - **CSP Compliance**: No inline handlers
 - **HTTPS Support**: Ready for production
 
-## 📈 Performance Metrics
+## Performance Metrics
 
 | Layer | Operation | Performance |
 |-------|-----------|-------------|
@@ -171,18 +171,18 @@ A comprehensive multi-layer phishing URL detection system with real-time protect
 | **Total (cached)** | **End-to-end** | **~4-5ms** |
 | **Total (fresh)** | **End-to-end** | **~7-8ms** |
 
-## 🧪 Testing
+## Testing
 
 ### Test Coverage
-- ✅ URL preprocessing (protocol, IDN, subdomain extraction)
-- ✅ Bloom Filter performance (1000 lookups in 0.69ms)
-- ✅ Database operations (add, check, duplicates)
-- ✅ API integration (parallel execution, caching)
-- ✅ Heuristic analysis (typosquatting, keywords, domain age)
-- ✅ Risk aggregation (weighted scoring, classification)
-- ✅ Web dashboard (UI functionality, real-time scanning)
-- ✅ Browser extension (structure, integration, security)
-- ✅ Security scanning (CodeQL: 0 vulnerabilities)
+- URL preprocessing (protocol, IDN, subdomain extraction)
+- Bloom Filter performance (1000 lookups in 0.69ms)
+- Database operations (add, check, duplicates)
+- API integration (parallel execution, caching)
+- Heuristic analysis (typosquatting, keywords, domain age)
+- Risk aggregation (weighted scoring, classification)
+- Web dashboard (UI functionality, real-time scanning)
+- Browser extension (structure, integration, security)
+- Security scanning (CodeQL: 0 vulnerabilities)
 
 ### Test URLs
 ```bash
@@ -203,7 +203,7 @@ A comprehensive multi-layer phishing URL detection system with real-time protect
 # → Risk: 100, Status: malicious
 ```
 
-## 🚀 Deployment
+## Deployment
 
 ### Development
 ```bash
@@ -229,7 +229,7 @@ http://127.0.0.1:8000/docs
 - Deploy database to persistent storage
 - Scale API workers for high traffic
 
-## 📝 API Documentation
+## API Documentation
 
 ### POST /api/v1/scan
 
@@ -247,7 +247,7 @@ http://127.0.0.1:8000/docs
   "status": "safe",
   "risk_score": 0,
   "verdict_source": "Complete Analysis",
-  "recommendation": "✅ SAFE - No immediate threats detected.",
+  "recommendation": "SAFE - No immediate threats detected.",
   "reasons": [
     "No heuristic red flags detected."
   ],
@@ -268,7 +268,7 @@ http://127.0.0.1:8000/docs
 }
 ```
 
-## 🔒 Security Features
+## Security Features
 
 ### Input Validation
 - Pydantic HttpUrl validation
@@ -288,7 +288,7 @@ http://127.0.0.1:8000/docs
 - Secure API communication
 - Local extension storage
 
-## 📚 Project Structure
+## Project Structure
 
 ```
 phishing-url-analyzer/
@@ -329,7 +329,7 @@ phishing-url-analyzer/
 └── README.md                   # Documentation
 ```
 
-## 🎓 Educational Value
+## Educational Value
 
 This project demonstrates:
 - Modern async Python with FastAPI
@@ -341,7 +341,7 @@ This project demonstrates:
 - Clean architecture principles
 - Real-time web applications
 
-## 🔮 Future Enhancements
+## Future Enhancements
 
 ### Phase 8: Machine Learning (Planned)
 - Train ML model on URL features
@@ -360,10 +360,10 @@ This project demonstrates:
 - [ ] API rate limiting
 - [ ] Advanced analytics dashboard
 
-## 📄 License
+## License
 
 Same as the main Phishing URL Analyzer project.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built following modern security practices and industry standards for phishing detection systems.
