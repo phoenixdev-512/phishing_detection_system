@@ -60,8 +60,8 @@ async def scan_url(request: Request, body: URLRequest):
         # Stage 2: Expected Graph Density (EGD)
         t2 = time.time()
         try:
-            egd_model = EGDModel(domain_age_days=graph_builder.domain_age_days)
-            baselines = egd_model.compute_all_baselines()
+            egd_model = EGDModel()
+            baselines = egd_model.compute_all_baselines(graph_builder.domain_age_days)
         except Exception as e:
             logger.error(f"Stage 2 Failed: {e}")
             raise Exception(f"Stage 2 (EGD Model): {e}")
@@ -74,7 +74,7 @@ async def scan_url(request: Request, body: URLRequest):
                 root_node=candidate.candidate_domain,
                 graph=graph,
                 egd_baselines=baselines,
-                domain_age_days=egd_model.domain_age_days,
+                domain_age_days=egd_model.clamped_age_days,
                 whois_failed=egd_model.whois_failed
             )
             tis_result = tis_calculator.compute_tis()
