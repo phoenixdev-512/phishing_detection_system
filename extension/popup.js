@@ -92,7 +92,9 @@ function displayResults(data) {
     
     const scoresPara = document.createElement('p');
     scoresPara.style.marginBottom = '4px';
-    scoresPara.textContent = `TGIS Score: ${data.tgis_score.toFixed(2)} | TIS: ${data.tis_score.toFixed(2)} | SCP: ${data.scp_score.toFixed(2)}`;
+    const safeTis = data.tis_score !== null && data.tis_score !== undefined ? data.tis_score : 0;
+    const safeScp = data.scp_score !== null && data.scp_score !== undefined ? data.scp_score : 0;
+    scoresPara.textContent = `TGIS Score: ${data.tgis_score.toFixed(2)} | TIS: ${safeTis.toFixed(2)} | SCP: ${safeScp.toFixed(2)}`;
     tgisRow.appendChild(scoresPara);
     
     if (data.scp_activated) {
@@ -120,13 +122,11 @@ function displayResults(data) {
     
     if (data.siblings && data.siblings.length > 0) {
       const maliciousCount = data.siblings.filter(s => s.is_known_malicious).length;
-      if (maliciousCount > 0) {
-        const neighborLabel = document.createElement('span');
-        neighborLabel.textContent = `Malicious neighbors: ${maliciousCount}`;
-        neighborLabel.style.color = '#ef4444';
-        neighborLabel.style.fontSize = '10px';
-        tgisRow.appendChild(neighborLabel);
-      }
+      const neighborLabel = document.createElement('span');
+      neighborLabel.textContent = `Malicious neighbors: ${maliciousCount}`;
+      neighborLabel.style.color = maliciousCount > 0 ? '#ef4444' : '#6b7280';
+      neighborLabel.style.fontSize = '10px';
+      tgisRow.appendChild(neighborLabel);
     }
     
     document.getElementById('results').appendChild(tgisRow);

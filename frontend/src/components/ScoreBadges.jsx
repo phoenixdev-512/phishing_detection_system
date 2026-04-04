@@ -12,9 +12,9 @@ export default function ScoreBadges({ tisScore, scpScore, scpActivated, residual
       <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#9ca3af' }}>{label}</h4>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
         <div style={{ width: '100%', backgroundColor: '#374151', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
-           <div style={{ width: `${Math.min(score * 100, 100)}%`, backgroundColor: getColor(score), height: '100%', transition: 'width 0.8s ease-in-out' }} />
+           <div data-testid="gauge-fill" style={{ width: `${Math.min(score * 100, 100)}%`, backgroundColor: getColor(score), height: '100%', transition: 'width 0.8s ease-in-out' }} />
         </div>
-        <span style={{ marginLeft: '12px', fontWeight: 'bold' }}>{score.toFixed(2)}</span>
+        <span style={{ marginLeft: '12px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{score.toFixed(2)} / 1.00</span>
       </div>
       <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>{subtext}</p>
     </div>
@@ -25,7 +25,7 @@ export default function ScoreBadges({ tisScore, scpScore, scpActivated, residual
       <Gauge 
         label="Temporal Isolation (TIS)" 
         score={tisScore || 0} 
-        subtext={`Domain age: ${domainAgeDays !== null ? domainAgeDays.toFixed(1) + ' days' : 'Unknown'}`} 
+        subtext={`Domain age: ${domainAgeDays != null ? domainAgeDays.toFixed(1) + ' days' : 'Unknown'}`} 
       />
       <Gauge 
         label="Sibling Contamination (SCP)" 

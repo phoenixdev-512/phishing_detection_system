@@ -52,9 +52,10 @@ export default function EgoGraphViewer({ graphData }) {
         width={dimensions.width}
         height={dimensions.height}
         graphData={formattedData}
+        nodeRelSize={1}
+        nodeVal={n => n.type === 'candidate' ? 144 : 36}
         nodeColor={n => NODE_COLORS[n.type] || '#fff'}
-        nodeVal={n => n.type === 'candidate' ? 64 : 16}
-        nodeLabel={n => n.domain_creation_date ? `${n.id} (${n.type})\nCreated: ${n.domain_creation_date}` : `${n.id} (${n.type})`}
+        nodeLabel={n => `ID: ${n.id}\nType: ${n.type}${n.threat_score !== undefined ? '\\nThreat Score: ' + n.threat_score : ''}${n.domain_creation_date ? '\\nCreated: ' + n.domain_creation_date : ''}`}
         linkColor={l => EDGE_COLORS[l.edge_type] || '#555'}
         linkWidth={1.5}
         linkDirectionalArrowLength={3.5}

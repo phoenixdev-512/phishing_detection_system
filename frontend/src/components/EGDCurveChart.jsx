@@ -36,6 +36,41 @@ export default function EGDCurveChart({ observedEdges, domainAgeDays }) {
     { day: age, routing_obs: observedEdges?.routing || 0 }
   ];
 
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{ backgroundColor: 'rgba(31, 41, 55, 0.95)', padding: '12px', border: '1px solid #374151', borderRadius: '4px', color: '#fff', fontSize: '12px' }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>Day {label}</p>
+          {payload.map((entry, index) => {
+            // Only process the curve payloads to pair effectively
+            if (entry.dataKey.includes('_obs')) return null;
+            
+            const exp = entry.value;
+            const obsKey = `${entry.dataKey}_obs`;
+            const obsPayload = payload.find(p => p.dataKey === obsKey);
+            
+            if (obsPayload) {
+              const obs = obsPayload.value || 0;
+              const iso = exp > 0 ? Math.max(0, exp - obs) / exp : 0;
+              return (
+                <div key={index} style={{ color: entry.color, marginBottom: '4px' }}>
+                   <strong>{entry.dataKey}:</strong> Expected: {exp.toFixed(1)}, Observed: {obs}, Isolation: {(iso * 100).toFixed(0)}%
+                </div>
+              );
+            }
+            
+            return (
+              <div key={index} style={{ color: entry.color, marginBottom: '4px' }}>
+                 <strong>{entry.dataKey}:</strong> Expected: {exp.toFixed(1)}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div style={{ height: '420px', backgroundColor: '#111827', borderRadius: '12px', border: '1px solid #374151', padding: '16px' }}>
       <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '20px', fontSize: '16px' }}>Expected Graph Density (EGD) Baselining</h3>
@@ -44,10 +79,7 @@ export default function EGDCurveChart({ observedEdges, domainAgeDays }) {
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis dataKey="day" stroke="#9ca3af" label={{ value: 'Domain Age (Days)', position: 'insideBottom', fill: '#9ca3af', offset: -5 }} />
           <YAxis stroke="#9ca3af" label={{ value: 'Edge Count', angle: -90, position: 'insideLeft', fill: '#9ca3af' }} />
-          <Tooltip 
-             contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
-             itemStyle={{ color: '#fff' }}
-          />
+          <Tooltip content={<CustomTooltip />} />
           <Legend wrapperStyle={{ color: '#9ca3af' }} />
           
           <ReferenceLine x={age} stroke="#ef4444" strokeDasharray="3 3" label={{ position: 'top', value: 'Actual Age', fill: '#ef4444', fontSize: '12px' }} />

@@ -61,10 +61,9 @@ jobs:
     - name: Install Frontend deps
       working-directory: ./frontend
       run: npm ci
-    # Assuming testing scripts like vitest are installed, running tests if configured
-    # - name: Run Vue/React Tests
-    #   working-directory: ./frontend
-    #   run: npm run test
+    - name: Run Vue/React Tests
+      working-directory: ./frontend
+      run: npm run test
 
   security-scan:
     runs-on: ubuntu-latest

@@ -5,8 +5,8 @@ const API_URL = "http://127.0.0.1:8000/api/v1/scan";
 // Listen for tab updates (when user navigates to a new page)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
-    // Ignore chrome:// and extension pages
-    if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+    // Ignore chrome://, file://, and extension pages
+    if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('file://')) {
       return;
     }
     
@@ -18,7 +18,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // Listen for tab activation (when user switches tabs)
 chrome.tabs.onActivated.addListener((activeInfo) => {
   chrome.tabs.get(activeInfo.tabId, (tab) => {
-    if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+    if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://') && !tab.url.startsWith('file://')) {
       console.log(`[Background] Tab activated: ${tab.url}`);
       checkURL(tab.url, activeInfo.tabId);
     }
@@ -53,6 +53,12 @@ async function checkURL(url, tabId) {
         verdict_source: result.verdict_source,
         recommendation: result.recommendation,
         reasons: result.reasons,
+        tgis_score: result.tgis_score,
+        tis_score: result.tis_score,
+        scp_score: result.scp_score,
+        domain_age_days: result.domain_age_days,
+        scp_activated: result.scp_activated,
+        siblings: result.siblings,
         timestamp: Date.now()
       }
     });

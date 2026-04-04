@@ -25,33 +25,48 @@ class TGISAggregator:
 
     def aggregate(self) -> dict:
         if self.blacklist_hit:
-            tgis_final = 1.0
-            status = "malicious"
-            reasons = ["Blacklist direct match override."]
-            recommendation = "MALICIOUS - Do not proceed."
-        else:
-            tis = self.tis_result.tis_score
-            scp = self.scp_result.scp_score
-            r = self.residual_heuristic_score
+            return {
+                "url": self.url,
+                "status": "malicious",
+                "risk_score": 100,
+                "verdict_source": "TGIS_Pipeline",
+                "reasons": ["Blacklist direct match override."],
+                "recommendation": "MALICIOUS - Do not proceed.",
+                "details": {},
+                "tgis_score": 1.0,
+                "tis_score": None,
+                "scp_score": None,
+                "residual_heuristic": None,
+                "domain_age_days": None,
+                "scp_activated": False,
+                "siblings": [],
+                "graph_summary": None,
+                "graph_json": None
+            }
             
-            tgis_final = self.alpha_w * tis + self.beta_w * scp + self.gamma_w * r
-            
-            reasons = [
-                f"TIS component: {tis:.2f}",
-                f"Legacy heuristic component: {r:.2f}"
-            ]
-            if self.scp_result.scp_activated:
-                reasons.append(f"SCP activated: {len(self.scp_result.siblings_found)} siblings found contributing {scp:.2f}")
+        tis = self.tis_result.tis_score
+        scp = self.scp_result.scp_score
+        r = self.residual_heuristic_score
+        
+        tgis_final = self.alpha_w * tis + self.beta_w * scp + self.gamma_w * r
+        tgis_final = min(1.0, max(0.0, tgis_final))
+        
+        reasons = [
+            f"TIS component: {tis:.2f}",
+            f"Legacy heuristic component: {r:.2f}"
+        ]
+        if self.scp_result.scp_activated:
+            reasons.append(f"SCP activated: {len(self.scp_result.siblings_found)} siblings found contributing {scp:.2f}")
 
-            if tgis_final < 0.30:
-                status = "safe"
-                recommendation = "SAFE - The domain graph aligns with baseline infrastructure."
-            elif tgis_final < 0.60:
-                status = "suspicious"
-                recommendation = "WARNING - Anomalous infrastructure footprint."
-            else:
-                status = "malicious"
-                recommendation = "MALICIOUS - High likelihood of phishing via Temporal Graph Isolation."
+        if tgis_final < 0.30:
+            status = "safe"
+            recommendation = "SAFE - The domain graph aligns with baseline infrastructure."
+        elif tgis_final < 0.60:
+            status = "suspicious"
+            recommendation = "WARNING - Anomalous infrastructure footprint."
+        else:
+            status = "malicious"
+            recommendation = "MALICIOUS - High likelihood of phishing via Temporal Graph Isolation."
 
         # Compute graph summary
         graph_summary = {
@@ -62,12 +77,13 @@ class TGISAggregator:
         }
 
         # Format siblings list for UI
+        from app.services.database import db_service
         siblings_ui = []
         for sib in self.scp_result.siblings_found:
             siblings_ui.append({
                 "domain": sib,
                 "weight": self.scp_result.sibling_weights.get(sib, 0.0),
-                "is_known_malicious": (self.scp_result.sibling_weights.get(sib, 0.0) >= 1.0) # approx
+                "is_known_malicious": bool(db_service.check_url(sib))
             })
 
         return {
