@@ -1,0 +1,449 @@
+PHISHING DETECTION SYSTEM
+TGIS Framework Upgrade Prompt
+Temporal Graph Isolation Scoring Architecture
+Complete Engineering Migration Guide  •  v2.0
+
+PURPOSE: This document is the master prompt for upgrading the existing FastAPI + SQLite phishing detection prototype into a mathematically rigorous, graph-based TGIS threat intelligence platform. Paste each section’s prompt to your AI coding assistant in sequence.
+
+
+0. Migration Overview & Goals
+The current system is a functional but shallow prototype that relies primarily on third-party blacklists (PhishTank), simple heuristic keyword matching, and a SQLite cache. Its detection logic collapses on zero-day phishing domains that have not yet been indexed by external APIs, and its scoring is deterministic threshold-based rather than mathematically derived.
+
+The TGIS framework replaces this with a self-contained, mathematically rigorous detection engine. Instead of asking 'Is this URL on a known bad list?', the system asks: 'Does this domain's infrastructure graph match the temporal growth pattern of a legitimate domain?'
+
+0.1 What Changes vs. What Stays
+
+0.2 High-Level Architecture Target
+RAW URL INPUT
+     |
+     v
++-----------------------------+
+|  Stage 0: URL Preprocessing |  (canonicalize, IDN Punycode, extract Candidate Domain $d$)
++-----------------------------+
+     |
+     v
++-----------------------------+
+|  Stage 1: Ego-Graph Build   |  (asyncio 200ms, 4 threads: PDNS, CT, WHOIS, BGP)
++-----------------------------+
+     |
+     v
++-----------------------------+
+|  Stage 2: EGD Baseline      |  (age-normalized expected density via piecewise exp. curve)
++-----------------------------+
+     |
+     v
++-----------------------------+
+|  Stage 3: TIS Score         |  (isolation anomaly vs expected, per edge type $k$)
++-----------------------------+
+     |
+     v
++-----------------------------+
+|  Stage 4: SCP Score         |  (sibling contamination via Jaccard + known-malicious weight)
++-----------------------------+
+     |
+     v
++-----------------------------+
+|  Stage 5: Final Aggregation |  (TGIS = alpha*TIS + beta*SCP + gamma*R)
++-----------------------------+
+     |
+     v
+ JSON Response (graph, scores, sibling list, verdict)
+
+
+1. Stage 0 — URL Preprocessing Upgrade
+PROMPT THIS SECTION FIRST. It establishes the canonical domain extraction that all subsequent stages depend on.
+
+1.1 Master Prompt: Preprocessing Service Rewrite
+
+Rewrite app/services/preprocessing.py to implement the following pipeline, strictly in this order. Replace the existing normalize() function with a new function called extract_candidate_domain(raw_url: str) -> CandidateDomain that returns a dataclass.
+
+Step 1 — RFC 3986 URI Decomposition: Parse the raw string using Python’s urllib.parse.urlsplit(). Do not use regex. Extract scheme, netloc (authority), path, query, and fragment into separate named fields.
+
+Step 2 — Percent-Decoding: Apply urllib.parse.unquote() to the netloc and path components to resolve hex-encoded obfuscation such as %61%64%6D%69%6E.
+
+Step 3 — Canonicalization: Lowercase the scheme and authority. Strip the default ports (remove :80 for http and :443 for https). Resolve relative path traversals using posixpath.normpath() on the path component.
+
+Step 4 — IDN Punycode Conversion: For the authority component, apply the ToASCII algorithm via Python’s built-in .encode('idna').decode('ascii') on each label of the domain. This converts spoofed Unicode domains (e.g., Cyrillic lookalikes) to their true xn-- Punycode form before any further analysis. Wrap in try/except UnicodeError and fall back to the raw label if encoding fails.
+
+Step 5 — Candidate Domain ($d$) Extraction: Use the tldextract library with the update_now=False, include_psl_private_domains=True flags to parse the FQDN. Extract the eTLD+1 (registered_domain). This is the Candidate Domain $d$. If registered_domain is empty or None, raise a ValueError with message 'Cannot extract valid candidate domain from input'.
+
+Step 6 — State Initialization: Record the current POSIX timestamp using time.time() as the Temporal Anchor $t$. Return the following dataclass:
+@dataclass
+class CandidateDomain:
+    raw_url: str
+    candidate_domain: str   # $d$ - the eTLD+1
+    fqdn: str               # full decoded authority
+    subdomain: str
+    scheme: str
+    temporal_anchor: float  # $t$ - POSIX timestamp
+    is_ip: bool             # True if netloc is an IPv4/IPv6 literal
+    punycode_converted: bool  # True if IDN conversion was applied
+
+Tests to write alongside this: (1) A URL with %61%64%6D%69%6E in the path decodes correctly. (2) A Cyrillic spoofed domain converts to valid Punycode. (3) A bare IP address sets is_ip=True and candidate_domain equals the IP string. (4) A URL with :443 in the netloc has the port stripped. (5) A relative traversal path /../admin normalizes to /admin.
+
+
+2. Stage 1 — Asynchronous Ego-Graph Construction
+This stage replaces the existing api_integration.py and all PhishTank/Google Safe Browsing calls. The system now queries infrastructure data planes directly, not verdict APIs.
+
+2.1 Data Source Architecture
+
+2.2 Master Prompt: Ego-Graph Builder
+Create a new file app/services/graph_builder.py. This module replaces api_integration.py entirely. Implement the class EgoGraphBuilder with the following design:
+
+Install dependencies: pip install networkx aiohttp tldextract python-whois. Add these to requirements.txt.
+The class constructor accepts a CandidateDomain object and initializes an empty NetworkX DiGraph: self.graph = nx.DiGraph(). Add the candidate domain $d$ as the root node with attribute type='candidate'.
+Implement an async method build_graph(timeout_ms: int = 200) -> nx.DiGraph. This method must use asyncio.wait_for() with a timeout of timeout_ms / 1000 seconds wrapped around asyncio.gather() of all four fetch coroutines.
+Implement the four fetch coroutines (each prefixed with _fetch_):
+_fetch_pdns(session): Query https://pdns.circl.lu/query/{domain} with aiohttp. Parse JSON. For each unique IP in the rrset list, add a node of type='ip' and a directed edge from $d$ to the IP with edge_type='infrastructure'. Handle HTTP 404 gracefully (return without adding edges).
+_fetch_ct_logs(session): Query https://crt.sh/?q={domain}&output=json. Parse JSON list. For each unique issuer_ca_id, add a node of type='ca' and a directed edge from $d$ to the CA node with edge_type='certificate'. Also inspect the name_value field for SAN entries; if a SAN domain differs from $d$, add it as a node of type='san_sibling' and a directed edge with edge_type='certificate_sibling'.
+_fetch_whois(session): Use python-whois (whois.whois(domain)) in an asyncio executor (loop.run_in_executor) since it is synchronous. Extract: registrar, creation_date, name_servers. Add registrar as a node of type='registrar' with an edge of edge_type='ownership'. Add each nameserver as a node of type='nameserver' with an edge of edge_type='ownership'. Store creation_date in the root node's attributes as domain_creation_date.
+_fetch_bgp(session): Query the CAIDA BGPStream REST endpoint or routeviews.org for the ASN of each IP already collected in the graph (if any). If CAIDA is unavailable, perform a simple RDAP IP lookup on the first resolved IP via https://rdap.arin.net/registry/ip/{ip}. Add the ASN as a node of type='asn' and a directed edge with edge_type='routing'.
+Fail-Soft Merge: After asyncio.gather() completes (or times out), merge all successfully returned subgraphs using nx.compose(). Any thread that raises an exception or times out contributes an empty subgraph (no nodes/edges from that thread). Log which threads failed at WARNING level. Never raise an exception from build_graph() itself; always return the best available graph.
+Store the final merged graph, the edge counts per type, and the domain age (calculated from creation_date vs temporal_anchor) as instance attributes for downstream stages.
+
+2.3 Graph Data Schema
+
+
+3. Stage 2 — Expected Graph Density (EGD) Model
+This stage implements the core mathematical innovation of TGIS: age-normalized baselining. It replaces the old threshold-based scoring entirely.
+
+3.1 The Problem Being Solved
+Classical graph-based detection uses absolute density thresholds (e.g., 'fewer than 5 edges = suspicious'). This produces massive False Positive rates for Newly Registered Legitimate Domains (NRLDs), which have low edge counts simply because they are new. The EGD model fixes this by asking: 'How many edges should a domain of this exact age have?'
+
+3.2 The Piecewise Exponential Function
+For each edge type $k$ (infrastructure, certificate, ownership, routing), the system computes a separate expected edge count using the following saturation growth model:
+
+E_k(a) = alpha_k * (1 - exp(-beta_k * a)) + gamma_k
+
+Where:
+  a         = domain age in days (float)
+  alpha_k   = saturation ceiling for edge type k (learned from training corpus)
+  beta_k    = growth rate constant for edge type k
+  gamma_k   = baseline floor (minimum expected edges even at a=0)
+
+3.3 Hardcoded Bootstrap Parameters
+Until a real training corpus is available, bootstrap the model with the following parameters derived from the 120k legitimate / 60k phishing corpus described in the TGIS paper. These are reasonable starting defaults and must be exposed as configurable constants in app/core/config.py so they can be updated without code changes:
+
+
+3.4 Master Prompt: EGD Model Implementation
+Create app/services/egd_model.py. Implement the class EGDModel with the following specification:
+
+Load the alpha_k, beta_k, gamma_k parameters from app/core/config.py as a dict keyed by edge type string.
+Implement method expected_edges(edge_type: str, domain_age_days: float) -> float that evaluates the piecewise exponential function. Clamp domain_age_days to a minimum of 0.0 and a maximum of 3650.0 (10 years).
+Implement method compute_all_baselines(domain_age_days: float) -> dict[str, float] that returns a dictionary of {edge_type: expected_count} for all four edge types.
+If domain_age_days is None (WHOIS lookup failed), set age to 1.0 as a conservative default and set a flag whois_failed=True in the returned baseline dict. This ensures NRLDs with failed WHOIS lookups are evaluated conservatively rather than given a free pass.
+Expose a method serialize() -> dict that returns all parameters and computed baselines for inclusion in the JSON response details field.
+
+
+4. Stage 3 & 4 — TIS Score + Sibling Contamination
+
+4.1 Temporal Isolation Score (TIS) — Stage 3
+The TIS score measures how anomalously isolated the candidate domain is compared to its age-normalized expectation. A domain with zero infrastructure edges when it 'should' have 10 scores very high on isolation.
+
+Per-type isolation component (Equation 2):
+  I_k(d,t) = max(0, E_k(age) - |E_k_observed|) / E_k(age)
+
+If E_k(age) == 0: I_k = 0 (no expectation, no penalty)
+
+Composite TIS (Equation 3):
+  TIS(d,t) = SUM_k [ w_k * I_k(d,t) ]
+
+Default weights w_k (from logistic regression on training corpus):
+  w_infrastructure = 0.40
+  w_certificate    = 0.25
+  w_ownership      = 0.20
+  w_routing        = 0.15
+
+TIS is always in range [0.0, 1.0]. 1.0 = maximally isolated.
+
+4.2 Master Prompt: TIS Calculator
+Create app/services/tis_calculator.py. Implement the class TISCalculator with the following specification:
+
+Constructor accepts: graph (nx.DiGraph), egd_baselines (dict from EGDModel), and w_k weights dict (loaded from config.py).
+Implement method count_observed_edges(edge_type: str) -> int: counts all edges in the graph with attribute edge_type matching the parameter.
+Implement method compute_isolation_component(edge_type: str) -> float: applies Equation 2. Guard division-by-zero explicitly.
+Implement method compute_tis() -> TISResult: applies Equation 3. Return a dataclass:
+@dataclass
+class TISResult:
+    tis_score: float          # final composite [0.0, 1.0]
+    per_type_isolation: dict  # {edge_type: I_k} for each k
+    observed_edges: dict      # {edge_type: count} actually found
+    expected_edges: dict      # {edge_type: expected_count} from EGD
+    domain_age_days: float
+    whois_failed: bool
+
+4.3 Sibling Contamination Propagation (SCP) — Stage 4
+SCP is only activated when domain_age_days < 1.0 (under 24 hours old). For older domains, SCP score defaults to 0.0 and the final aggregation relies solely on TIS.
+
+Sibling identification: Find all nodes s in G(d,t) such that s shares
+  >= 2 infrastructure edge types with candidate domain d.
+
+Jaccard similarity (shared infrastructure overlap):
+  J(d, s) = |N(d) intersect N(s)| / |N(d) union N(s)|
+  where N(x) = set of all neighbor node IDs of x in the graph.
+
+Contamination weight (Equation 4):
+  w_s = J(d, s) * (M(s) + 0.5 * TIS(s))
+  where M(s) = 1.0 if s is a known malicious domain, else 0.0
+  TIS(s) is the TIS score computed recursively for sibling s
+  (NOTE: compute sibling TIS at depth=1 only, do not recurse further)
+
+SCP score (Equation 5):
+  SCP(d) = min(1.0, SUM_s [ w_s ] / normalization_factor)
+  normalization_factor = max(1, len(siblings))
+
+4.4 Master Prompt: SCP Calculator
+Create app/services/scp_calculator.py. Implement the class SCPCalculator with the following specification:
+
+Constructor accepts: graph (nx.DiGraph), tis_result (TISResult), known_malicious_set (Python set of domain strings, loaded from the existing SQLite malicious_urls table).
+Implement method find_siblings() -> list[str]: returns a list of domain nodes that share >= 2 distinct edge types with the root candidate node. Edge types are compared by counting unique edge_type attribute values across all edges connecting to shared neighbors.
+Implement method jaccard_similarity(node_a: str, node_b: str) -> float: computes Jaccard similarity over the neighbor sets of the two nodes in the graph.
+Implement method compute_sibling_weight(sibling: str) -> float: applies Equation 4. For sibling TIS, run a lightweight TIS calculation using only the already-built graph (no new network calls).
+Implement method compute_scp() -> SCPResult: applies Equation 5. Only activate when domain_age_days < 1.0. Return:
+@dataclass
+class SCPResult:
+    scp_score: float          # [0.0, 1.0], 0.0 if age >= 1.0
+    siblings_found: list      # list of sibling domain strings
+    sibling_weights: dict     # {sibling: w_s}
+    scp_activated: bool       # False if domain is not under 24h old
+
+
+5. Stage 5 — Final Score Aggregation & New Response Schema
+
+5.1 The TGIS Aggregation Equation
+TGIS_final = alpha * TIS + beta * SCP + gamma * R
+
+Where:
+  alpha = 0.55  (TIS weight - primary signal)
+  beta  = 0.30  (SCP weight - sibling contamination)
+  gamma = 0.15  (R = residual heuristic signal, see below)
+
+R (Residual Heuristic) - retained from old heuristic engine but
+  downgraded to a tertiary signal. Compute as before (typosquatting,
+  IP-based URL, long URL, excessive subdomains) but normalize to [0,1].
+
+Verdict classification:
+  TGIS_final < 0.30  -> SAFE
+  0.30 <= TGIS < 0.60 -> SUSPICIOUS
+  TGIS_final >= 0.60  -> MALICIOUS
+
+Override: If local blacklist hit -> MALICIOUS (score = 1.0) immediately,
+  skip all pipeline stages (existing behavior preserved for speed).
+
+5.2 New JSON Response Schema
+Modify app/schemas/analysis_result.py to extend AnalysisResult with the following new fields. All existing fields (url, status, risk_score, reasons, recommendation) must remain present for backward compatibility with the Chrome extension.
+{
+  // EXISTING FIELDS (preserved for Chrome extension compatibility)
+  "url": "https://example-phish.com/login",
+  "status": "malicious",
+  "risk_score": 87,              // now derived from TGIS_final * 100
+  "verdict_source": "TGIS_Pipeline",
+  "reasons": ["TIS anomaly: infrastructure isolation 0.91", "SCP: 2 malicious siblings detected"],
+  "recommendation": "MALICIOUS - Do not proceed.",
+
+  // NEW TGIS FIELDS
+  "tgis_score": 0.87,            // raw float [0,1]
+  "tis_score": 0.91,
+  "scp_score": 0.72,
+  "residual_heuristic": 0.15,
+  "domain_age_days": 0.21,
+  "scp_activated": true,
+  "siblings": [                  // for graph visualization in frontend
+    {"domain": "example-phish2.com", "weight": 0.84, "is_known_malicious": true},
+    {"domain": "example-phish3.net", "weight": 0.61, "is_known_malicious": false}
+  ],
+  "graph_summary": {
+    "total_nodes": 14,
+    "total_edges": 11,
+    "edge_counts": {"infrastructure": 3, "certificate": 2, "ownership": 4, "routing": 2},
+    "expected_edges": {"infrastructure": 8.2, "certificate": 4.1, "ownership": 3.8, "routing": 1.9}
+  },
+  "graph_json": {                // react-force-graph compatible node-link format
+    "nodes": [{"id": "example-phish.com", "type": "candidate"}, ...],
+    "links": [{"source": "example-phish.com", "target": "192.168.1.1", "edge_type": "infrastructure"}, ...]
+  }
+}
+
+5.3 Master Prompt: Score Aggregator & Route Update
+1. Create app/services/tgis_aggregator.py. Implement class TGISAggregator that accepts TISResult, SCPResult, residual_heuristic_score (float), and a blacklist_hit (bool) flag. Implement method aggregate() -> TGISResult that applies the weighted formula, classifies the verdict, and populates all fields of the new AnalysisResult schema.
+
+2. Rewrite the POST /api/v1/scan route in app/api/v1/endpoints/scan.py (or app/main.py if currently inlined) to call the pipeline stages in order: extract_candidate_domain -> build_graph -> EGDModel -> TISCalculator -> SCPCalculator -> TGISAggregator. Each stage must be individually timed and the elapsed ms stored in a pipeline_timing dict inside the details field of the response.
+
+3. Add error handling: if any stage raises an unexpected exception, return HTTP 500 with a structured error body: {error: str, stage: str, url: str}. Do not silently swallow pipeline failures.
+
+
+6. Frontend — React Dashboard Rewrite
+This is the largest single-surface change. The static HTML/JS dashboard is replaced with a React app that includes an interactive graph visualization component.
+
+6.1 Tech Stack for Frontend
+
+6.2 Component Architecture
+src/
+  App.jsx                   Main layout + routing
+  components/
+    ScanForm.jsx            URL input + submit button
+    TGISResultCard.jsx      Top-level result: verdict, scores, age
+    ScoreBadges.jsx         TIS / SCP / Residual score gauges
+    EgoGraphViewer.jsx      react-force-graph-2d component
+    EGDCurveChart.jsx       Recharts line chart for growth curves
+    SiblingTable.jsx        Table of sibling domains + contamination weights
+    ScanHistory.jsx         Recent scans table (polls /api/v1/history)
+    StatsPanel.jsx          Aggregate stats (polls /api/v1/stats)
+  hooks/
+    useScan.js              POST /api/v1/scan + state management
+    usePolling.js           Generic interval-based polling hook
+  utils/
+    graphTransform.js       Convert graph_json to react-force-graph format
+    scoreColors.js          Color utility: score -> red/yellow/green
+
+6.3 Master Prompt: EgoGraphViewer Component
+Create src/components/EgoGraphViewer.jsx. This component receives the graph_json field from the TGIS API response and renders an interactive force-directed graph using react-force-graph-2d. Implement the following:
+
+Import ForceGraph2D from 'react-force-graph-2d'. The graph data prop format is { nodes: [{id, type}], links: [{source, target, edge_type}] }.
+Node color mapping by type:
+candidate: bright blue (#4FC3F7)
+ip: orange (#FF9800)
+ca: purple (#9C27B0)
+nameserver: teal (#00BCD4)
+asn: green (#4CAF50)
+san_sibling: yellow (#FFEB3B)
+known_malicious: red (#F44336)
+Node size: candidate node = 12px radius, all others = 6px radius.
+Edge color mapping by edge_type: infrastructure=orange, certificate=purple, ownership=teal, routing=green, certificate_sibling=yellow.
+On node hover: show a tooltip with the node id, type, and (if available) threat_score attribute.
+Add a small legend panel (bottom-left) mapping node colors to types.
+Make the component responsive: set width='100%' and height to 420px.
+If graph_json is null or has 0 nodes: render a placeholder div that says 'Graph data unavailable — check backend connectivity.'
+
+6.4 Master Prompt: ScoreBadges Component
+Create src/components/ScoreBadges.jsx. Replace the old static 'Heuristic progress bars' with three dynamic gauge components. Each gauge displays:
+
+Label: 'Temporal Isolation Score (TIS)', 'Sibling Contamination (SCP)', 'Residual Heuristic (R)'
+Value: a float [0,1] displayed as both a percentage bar and a numeric label (e.g., '0.87 / 1.00')
+Bar color: green if < 0.30, amber if 0.30-0.59, red if >= 0.60
+Subtext: for TIS, show 'Domain age: X days'. For SCP, show 'SCP activated: Yes/No'. For R, show 'Legacy heuristics'.
+Animate the bar fill on mount using CSS transition (transition: width 0.8s ease-in-out).
+
+6.5 Master Prompt: EGDCurveChart Component
+Create src/components/EGDCurveChart.jsx. This chart helps the analyst understand why a domain was flagged by showing the expected vs actual edge counts for each edge type.
+
+Use recharts LineChart. X-axis: domain age in days (0 to 90). Y-axis: edge count.
+Render four lines (one per edge type) showing the EGD expected growth curve. These are always visible.
+Render four scatter points (one per edge type) at the candidate domain's actual age, showing the observed edge count. If the scatter point is far below the line, the domain is isolated.
+Color each line/point pair to match the edge type color from EgoGraphViewer.
+Add a vertical dashed line at the candidate domain's actual age (x = domain_age_days).
+Show a tooltip on hover: 'Expected: X, Observed: Y, Isolation: Z%'.
+
+
+7. Chrome Extension — Schema Compatibility Update
+The extension requires only minor changes. The backend already returns all legacy fields (status, risk_score, reasons, recommendation) unchanged, so the core warning logic is unaffected. Only the popup display needs updating.
+
+7.1 Master Prompt: Extension Popup Update
+Open extension/popup.js. After the existing code that renders status/risk_score/reasons, add the following additional display logic:
+
+If the response contains a tgis_score field, render a secondary info row below the verdict: 'TGIS Score: X | TIS: Y | SCP: Z'. Format all three as two-decimal floats.
+If scp_activated is true, append a badge or label reading 'Sibling Analysis Active' in amber color (#FF9800).
+If domain_age_days is present and < 1.0, append 'New domain: {hours}h old' in red, where hours = Math.round(domain_age_days * 24).
+If the siblings array has length > 0, append: 'Malicious neighbors: N' where N is the count of siblings where is_known_malicious === true. Do not list individual siblings in the popup (privacy / space constraint).
+All new DOM elements must use document.createElement and textContent only. Do NOT use innerHTML for any of the new fields.
+
+
+8. Database Schema, Configuration & Security
+
+8.1 New Database Tables
+Add the following tables to app/services/database.py. Create them in the init_db() function alongside existing tables:
+-- Domain age cache (avoid repeated WHOIS lookups)
+CREATE TABLE IF NOT EXISTS domain_age_cache (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain      TEXT UNIQUE NOT NULL,
+    creation_date TEXT,          -- ISO 8601 string or NULL if WHOIS failed
+    fetched_at  REAL NOT NULL,   -- POSIX timestamp of cache entry
+    ttl_seconds INTEGER DEFAULT 86400  -- 24h cache for WHOIS data
+);
+
+-- Graph snapshot cache (avoid rebuilding graph on repeated scans of same domain within TTL)
+CREATE TABLE IF NOT EXISTS graph_cache (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain      TEXT UNIQUE NOT NULL,
+    graph_json  TEXT NOT NULL,   -- JSON serialized nx.node_link_data()
+    tis_score   REAL,
+    scp_score   REAL,
+    fetched_at  REAL NOT NULL,
+    ttl_seconds INTEGER DEFAULT 300  -- 5 min TTL for graph data
+);
+
+8.2 Config.py New Variables
+Add the following to app/core/config.py:
+# TGIS Pipeline Configuration
+TGIS_TIMEOUT_MS: int = 200
+TGIS_ALPHA: float = 0.55       # TIS weight in final aggregation
+TGIS_BETA: float = 0.30        # SCP weight in final aggregation
+TGIS_GAMMA: float = 0.15       # Residual heuristic weight
+SCP_AGE_THRESHOLD_DAYS: float = 1.0  # SCP only activates below this
+
+# EGD Model Parameters (per edge type)
+EGD_PARAMS: dict = {
+    "infrastructure": {"alpha": 18.0, "beta": 0.045, "gamma": 0.5},
+    "certificate":    {"alpha": 6.0,  "beta": 0.08,  "gamma": 0.0},
+    "ownership":      {"alpha": 4.0,  "beta": 0.12,  "gamma": 1.0},
+    "routing":        {"alpha": 3.0,  "beta": 0.06,  "gamma": 0.2},
+}
+
+# TIS Weights (must sum to 1.0)
+TIS_WEIGHTS: dict = {
+    "infrastructure": 0.40,
+    "certificate":    0.25,
+    "ownership":      0.20,
+    "routing":        0.15,
+}
+
+# Data Source API Endpoints
+PDNS_API_URL: str = "https://pdns.circl.lu/query"
+CT_LOGS_API_URL: str = "https://crt.sh"
+RDAP_API_URL: str = "https://rdap.arin.net/registry/ip"
+
+8.3 Security Hardening Prompts
+These items were P0 risks in the old system and must be resolved as part of this upgrade:
+
+CORS: In app/main.py, replace allow_origins=['*'] with allow_origins=settings.ALLOWED_ORIGINS where ALLOWED_ORIGINS is a comma-separated env variable. Default to ['http://localhost:5173', 'http://localhost:3000'] for development. Never deploy with wildcard.
+Rate Limiting: Install slowapi. Apply a rate limiter of 30 requests/minute per IP to POST /api/v1/scan. Return HTTP 429 with Retry-After header when exceeded.
+Auth: Add an optional API key header check (X-API-Key). If API_KEY is set in environment, all /api/v1/ routes require it. If not set, auth is disabled (development mode). Return HTTP 403 on invalid key.
+Dashboard XSS: The scan history table currently uses innerHTML string interpolation. Replace with safe DOM creation in the React rewrite (this is automatically fixed by React's JSX rendering which escapes by default).
+Extension host permissions: Narrow <all_urls> to the specific backend host URL in the manifest.json. Add a background.js check that skips scanning for chrome://, file://, and extension:// URLs.
+
+
+9. Test Suite Prompts
+
+9.1 Backend Unit Tests
+Create tests/ directory. Use pytest + pytest-asyncio. Prompt your AI to write the following test files:
+
+tests/test_preprocessing.py: 10 tests covering IDN conversion, percent-decoding, IP detection, port stripping, path normalization, and candidate domain extraction from subdomains.
+tests/test_egd_model.py: Tests that E_k(0) = gamma_k, E_k(large_a) approaches alpha_k + gamma_k, and that age clamping works.
+tests/test_tis_calculator.py: Mock graph with known edge counts. Assert TIS = 0.0 when observed >= expected for all types. Assert TIS = 1.0 when observed = 0 and expected >> 0 for all types.
+tests/test_scp_calculator.py: Build a test graph with two sibling nodes sharing neighbors with the candidate. Mark one as known_malicious. Assert SCP > 0 and sibling_weights[malicious_sibling] > sibling_weights[non_malicious].
+tests/test_scan_endpoint.py: Integration test using FastAPI TestClient. POST /api/v1/scan with a test URL. Assert response contains tgis_score, tis_score, scp_score, graph_summary fields. Assert HTTP 422 on invalid URL.
+
+9.2 Frontend Tests
+Use Vitest + React Testing Library.
+Test ScoreBadges renders correct color class for scores below 0.30, between 0.30-0.59, and above 0.60.
+Test EgoGraphViewer renders placeholder text when graph_json is null.
+Test SiblingTable shows correct malicious count badge.
+
+9.3 CI Pipeline Prompt
+Create .github/workflows/ci.yml. Prompt your AI to write a GitHub Actions workflow that runs on every push and pull request with the following jobs:
+
+lint: Run ruff check . and black --check .
+type-check: Run mypy app/ --ignore-missing-imports
+test: Run pytest tests/ -v --cov=app --cov-report=term-missing
+frontend-test: Run npm ci && npm run test in the frontend directory
+security-scan: Run pip install bandit && bandit -r app/ -ll (fail only on HIGH severity issues)
+
+
+10. Phased Delivery Plan
+
+
+IMPORTANT: In Phase A, use mock data sources that return pre-fabricated graph responses so the full pipeline response schema can be tested end-to-end before live API keys are available. Wrap each data source in an interface/protocol class so the mock can be swapped for the real implementation without changing the pipeline code.
+
+11. Key Dependencies Summary
+
+End of TGIS Upgrade Prompt — Phishing Detection System v2.0

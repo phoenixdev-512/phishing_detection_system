@@ -15,3 +15,14 @@ class AnalysisResult(BaseModel):
     reasons: List[str] = Field(default=[], description="Explainable reasons for the verdict")
     recommendation: Optional[str] = Field(None, description="Actionable recommendation for the user")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional analysis details for transparency")
+    
+    # NEW TGIS FIELDS
+    tgis_score: Optional[float] = None
+    tis_score: Optional[float] = None
+    scp_score: Optional[float] = None
+    residual_heuristic: Optional[float] = None
+    domain_age_days: Optional[float] = None
+    scp_activated: Optional[bool] = None
+    siblings: Optional[List[Dict[str, Any]]] = None
+    graph_summary: Optional[Dict[str, Any]] = None
+    graph_json: Optional[Dict[str, Any]] = None

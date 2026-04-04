@@ -1,82 +1,98 @@
+import posixpath
+import time
 import re
-from urllib.parse import urlparse, urlunparse
+from dataclasses import dataclass
+from urllib.parse import urlsplit, unquote
 import tldextract
-from fastapi import HTTPException
 
-class URLPreprocessor:
-    def __init__(self):
-        # Regex to identify IP addresses (IPv4)
-        self.ip_regex = re.compile(
-            r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
-            r'(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
-        )
+@dataclass
+class CandidateDomain:
+    raw_url: str
+    candidate_domain: str   # $d$ - the eTLD+1
+    fqdn: str               # full decoded authority
+    subdomain: str
+    scheme: str
+    temporal_anchor: float  # $t$ - POSIX timestamp
+    is_ip: bool             # True if netloc is an IPv4/IPv6 literal
+    punycode_converted: bool  # True if IDN conversion was applied
 
-    def normalize(self, raw_url: str) -> dict:
-        """
-        Main pipeline to clean and extract features from a URL.
-        Returns a dictionary of components.
-        """
-        # 1. Basic Sanitization
-        clean_url = raw_url.strip()
-        # Remove control characters (e.g., tabs, newlines which can be obfuscation vectors)
-        clean_url = "".join(ch for ch in clean_url if ch.isprintable())
+# Regex for IPv4/IPv6 literal detection
+IP_REGEX = re.compile(
+    r'^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|'  # IPv4
+    r'^\[?([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}\]?$'  # Basic IPv6
+)
 
-        # 2. Protocol Validation & Addition
-        # If no scheme is present, default to http:// to allow parsing
-        if not re.match(r'^[a-zA-Z]+://', clean_url):
-            clean_url = 'http://' + clean_url
+def extract_candidate_domain(raw_url: str) -> CandidateDomain:
+    # Pre-step: Add default scheme if totally missing, so urlsplit doesn't treat netloc as path
+    if not re.match(r'^[a-zA-Z]+://', raw_url):
+        raw_url_for_parsing = 'http://' + raw_url
+    else:
+        raw_url_for_parsing = raw_url
 
-        # 3. IDN (Internationalized Domain Name) Conversion
-        # This converts characters like 'рaypal.com' (Cyrillic 'a') into 'xn--pypal-4ve.com'
+    # Step 1: Decomposition
+    parts = urlsplit(raw_url_for_parsing)
+    scheme = parts.scheme
+    netloc = parts.netloc
+    path = parts.path
+
+    # Step 2: Percent-Decoding
+    netloc = unquote(netloc)
+    path = unquote(path)
+
+    # Step 3: Canonicalization
+    scheme = scheme.lower()
+    netloc = netloc.lower()
+    
+    # Strip default ports
+    if scheme == 'http' and netloc.endswith(':80'):
+        netloc = netloc[:-3]
+    elif scheme == 'https' and netloc.endswith(':443'):
+        netloc = netloc[:-4]
+    
+    # Resolve relative path traversals
+    if path:
+        path = posixpath.normpath(path)
+
+    # Step 4: IDN Punycode Conversion
+    labels = netloc.split('.')
+    punycode_converted = False
+    ascii_labels = []
+    
+    for label in labels:
         try:
-            parsed_initial = urlparse(clean_url)
-            # Check if hostname exists before encoding
-            if parsed_initial.hostname:
-                # Encode the hostname to IDNA (Punycode)
-                ascii_host = parsed_initial.hostname.encode('idna').decode('ascii')
-                # Reconstruct the URL with the ASCII hostname
-                # urlparse is immutable, so we replace components in a list logic
-                clean_url = urlunparse((
-                    parsed_initial.scheme,
-                    ascii_host,
-                    parsed_initial.path,
-                    parsed_initial.params,
-                    parsed_initial.query,
-                    parsed_initial.fragment
-                ))
-        except (UnicodeError, AttributeError):
-            # If conversion fails, the domain might be malformed or already ASCII
-            pass
+            ascii_label = label.encode('idna').decode('ascii')
+            if ascii_label != label:
+                punycode_converted = True
+            ascii_labels.append(ascii_label)
+        except UnicodeError:
+            ascii_labels.append(label)
+    
+    fqdn = '.'.join(ascii_labels)
 
-        # 4. Deep Structural Decomposition
-        # Using tldextract for accurate Subdomain/Domain/Suffix separation
-        extracted = tldextract.extract(clean_url)
-        parsed = urlparse(clean_url)
+    # IPv4/IPv6 fast check
+    is_ip = bool(IP_REGEX.match(fqdn))
 
-        # 5. Feature Extraction for later layers
-        # We prepare these now so the Heuristic layer doesn't have to re-parse
-        features = {
-            "full_url": clean_url,
-            "protocol": parsed.scheme,
-            "subdomain": extracted.subdomain,
-            "domain": extracted.domain,
-            "suffix": extracted.suffix,  # The TLD (e.g., .com, .co.uk)
-            "registered_domain": extracted.registered_domain,  # domain.suffix
-            "path": parsed.path,
-            "query_params": parsed.query,
-            "is_ip_address": self._is_ip_address(extracted.domain),
-            "url_length": len(clean_url)
-        }
+    # Step 5: Candidate Domain extraction
+    extracted = tldextract.extract(fqdn, update_now=False, include_psl_private_domains=True)
+    
+    if is_ip:
+        candidate_domain = fqdn
+    else:
+        candidate_domain = extracted.registered_domain
+        
+    if not candidate_domain:
+        raise ValueError("Cannot extract valid candidate domain from input")
 
-        # 6. Basic Validation
-        if not features["registered_domain"] and not features["is_ip_address"]:
-            raise HTTPException(status_code=400, detail="Invalid URL: No valid domain or IP found.")
+    # Step 6: State Initialization
+    temporal_anchor = time.time()
 
-        return features
-
-    def _is_ip_address(self, domain_part: str) -> bool:
-        """Helper to check if the domain part is actually an IP."""
-        return bool(self.ip_regex.match(domain_part))
-
-# Instantiate a global preprocessor to be imported elsewhere
-preprocessor = URLPreprocessor()
+    return CandidateDomain(
+        raw_url=raw_url,
+        candidate_domain=candidate_domain,
+        fqdn=fqdn,
+        subdomain=extracted.subdomain,
+        scheme=scheme,
+        temporal_anchor=temporal_anchor,
+        is_ip=is_ip,
+        punycode_converted=punycode_converted
+    )

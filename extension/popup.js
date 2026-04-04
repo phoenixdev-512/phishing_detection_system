@@ -81,6 +81,57 @@ function displayResults(data) {
     reasonsList.appendChild(li);
   }
 
+  // --- TGIS Additional Data ---
+  if (data.tgis_score !== undefined && data.tgis_score !== null) {
+    const tgisRow = document.createElement('div');
+    tgisRow.style.marginTop = '12px';
+    tgisRow.style.fontSize = '12px';
+    tgisRow.style.padding = '8px';
+    tgisRow.style.backgroundColor = '#f3f4f6';
+    tgisRow.style.borderRadius = '4px';
+    
+    const scoresPara = document.createElement('p');
+    scoresPara.style.marginBottom = '4px';
+    scoresPara.textContent = `TGIS Score: ${data.tgis_score.toFixed(2)} | TIS: ${data.tis_score.toFixed(2)} | SCP: ${data.scp_score.toFixed(2)}`;
+    tgisRow.appendChild(scoresPara);
+    
+    if (data.scp_activated) {
+      const scpBadge = document.createElement('span');
+      scpBadge.textContent = 'Sibling Analysis Active';
+      scpBadge.style.backgroundColor = '#FF9800';
+      scpBadge.style.color = '#fff';
+      scpBadge.style.padding = '2px 6px';
+      scpBadge.style.borderRadius = '12px';
+      scpBadge.style.fontSize = '10px';
+      scpBadge.style.marginRight = '8px';
+      tgisRow.appendChild(scpBadge);
+    }
+    
+    if (data.domain_age_days !== undefined && data.domain_age_days !== null && data.domain_age_days < 1.0) {
+      const ageHours = Math.round(data.domain_age_days * 24);
+      const ageLabel = document.createElement('span');
+      ageLabel.textContent = `New domain: ${ageHours}h old`;
+      ageLabel.style.color = '#ef4444';
+      ageLabel.style.fontWeight = 'bold';
+      ageLabel.style.fontSize = '10px';
+      ageLabel.style.marginRight = '8px';
+      tgisRow.appendChild(ageLabel);
+    }
+    
+    if (data.siblings && data.siblings.length > 0) {
+      const maliciousCount = data.siblings.filter(s => s.is_known_malicious).length;
+      if (maliciousCount > 0) {
+        const neighborLabel = document.createElement('span');
+        neighborLabel.textContent = `Malicious neighbors: ${maliciousCount}`;
+        neighborLabel.style.color = '#ef4444';
+        neighborLabel.style.fontSize = '10px';
+        tgisRow.appendChild(neighborLabel);
+      }
+    }
+    
+    document.getElementById('results').appendChild(tgisRow);
+  }
+
   // Show timestamp if available
   if (data.timestamp) {
     const timeSince = Math.floor((Date.now() - data.timestamp) / 1000);
