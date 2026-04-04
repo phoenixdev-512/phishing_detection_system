@@ -16,7 +16,14 @@ def test_tis_calculation_safe():
         "routing": 0.0
     }
     
-    calc = TISCalculator("example.com", graph, baselines, 100.0, False)
+    mock_weights = {
+        "infrastructure": 0.40,
+        "certificate": 0.25,
+        "ownership": 0.20,
+        "routing": 0.15
+    }
+    
+    calc = TISCalculator("example.com", graph, baselines, mock_weights, 100.0, False)
     res = calc.compute_tis()
     
     assert res.tis_score == 0.0 # safe
@@ -31,7 +38,12 @@ def test_tis_calculation_malicious():
         "ownership": 2.0,
         "routing": 1.0
     }
-    calc = TISCalculator("example.com", graph, baselines, 100.0, False)
+    calc = TISCalculator("example.com", graph, baselines, {
+        "infrastructure": 0.40,
+        "certificate": 0.25,
+        "ownership": 0.20,
+        "routing": 0.15
+    }, 100.0, False)
     res = calc.compute_tis()
     
     # Since observed is 0, isolation for each component is expected/expected = 1.0

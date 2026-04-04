@@ -12,11 +12,11 @@ class TISResult:
     whois_failed: bool
 
 class TISCalculator:
-    def __init__(self, root_node: str, graph: nx.DiGraph, egd_baselines: dict, domain_age_days: float, whois_failed: bool):
+    def __init__(self, root_node: str, graph: nx.DiGraph, egd_baselines: dict, weights_dict: dict, domain_age_days: float, whois_failed: bool):
         self.root_node = root_node
         self.graph = graph
         self.egd_baselines = egd_baselines
-        self.weights = settings.TIS_WEIGHTS
+        self.weights = weights_dict
         self.domain_age_days = domain_age_days
         self.whois_failed = whois_failed
         

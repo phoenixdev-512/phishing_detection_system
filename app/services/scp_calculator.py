@@ -85,6 +85,7 @@ class SCPCalculator:
             root_node=sibling,
             graph=self.graph,
             egd_baselines=self.tis_result.expected_edges,
+            weights_dict={"infrastructure": 0.40, "certificate": 0.25, "ownership": 0.20, "routing": 0.15},
             domain_age_days=self.tis_result.domain_age_days,
             whois_failed=self.tis_result.whois_failed
         )

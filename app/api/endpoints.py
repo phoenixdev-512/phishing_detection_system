@@ -74,6 +74,7 @@ async def scan_url(request: Request, body: URLRequest):
                 root_node=candidate.candidate_domain,
                 graph=graph,
                 egd_baselines=baselines,
+                weights_dict=settings.TIS_WEIGHTS,
                 domain_age_days=egd_model.clamped_age_days,
                 whois_failed=egd_model.whois_failed
             )
