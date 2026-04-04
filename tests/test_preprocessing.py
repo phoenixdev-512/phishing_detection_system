@@ -2,10 +2,10 @@ import pytest
 from app.services.preprocessing import extract_candidate_domain
 
 def test_extract_idn_conversion():
-    # Cyrillic "a"
+    # Cyrillic "p" in paypal
     res = extract_candidate_domain("http://рaypal.com")
     assert res.punycode_converted is True
-    assert res.candidate_domain == "xn--pypal-4ve.com"
+    assert res.candidate_domain == "xn--aypal-uye.com"
 
 def test_extract_percent_decoding():
     res = extract_candidate_domain("http://example.com/%61%64%6D%69%6E")

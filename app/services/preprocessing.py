@@ -22,6 +22,9 @@ IP_REGEX = re.compile(
     r'^\[?([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}\]?$'  # Basic IPv6
 )
 
+# Shared TLD Extractor instance
+tld_extractor = tldextract.TLDExtract(include_psl_private_domains=True)
+
 def extract_candidate_domain(raw_url: str) -> CandidateDomain:
     # Pre-step: Add default scheme if totally missing, so urlsplit doesn't treat netloc as path
     if not re.match(r'^[a-zA-Z]+://', raw_url):
@@ -73,7 +76,8 @@ def extract_candidate_domain(raw_url: str) -> CandidateDomain:
     is_ip = bool(IP_REGEX.match(fqdn))
 
     # Step 5: Candidate Domain extraction
-    extracted = tldextract.extract(fqdn, update_now=False, include_psl_private_domains=True)
+    extracted = tld_extractor(fqdn)
+
     
     if is_ip:
         candidate_domain = fqdn

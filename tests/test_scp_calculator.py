@@ -25,13 +25,13 @@ def test_scp_computation():
     
     # d.com and s1.com and s2.com all connect to ip1 and ip2
     graph.add_edge("d.com", "ip1", edge_type="infrastructure")
-    graph.add_edge("d.com", "ip2", edge_type="infrastructure")
+    graph.add_edge("d.com", "ip2", edge_type="certificate")
     
     graph.add_edge("s1.com", "ip1", edge_type="infrastructure")
-    graph.add_edge("s1.com", "ip2", edge_type="infrastructure")
+    graph.add_edge("s1.com", "ip2", edge_type="certificate")
     
     graph.add_edge("s2.com", "ip1", edge_type="infrastructure")
-    graph.add_edge("s2.com", "ip2", edge_type="infrastructure")
+    graph.add_edge("s2.com", "ip2", edge_type="certificate")
     
     tis_res = TISResult(0.5, {}, {}, {}, 0.5, False)
     known_malicious = {"s1.com"} # s1 is malicious
