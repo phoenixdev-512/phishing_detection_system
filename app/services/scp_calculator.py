@@ -1,100 +1,100 @@
+import dataclasses
 from dataclasses import dataclass
 import networkx as nx
-from app.services.tis_calculator import TISResult, TISCalculator
+from app.core.config import settings
+from app.services.tis_calculator import TISCalculator, TISResult
 
 @dataclass
 class SCPResult:
     scp_score: float
-    siblings_found: list      
-    sibling_weights: dict     
-    scp_activated: bool       
+    siblings_found: list
+    sibling_weights: dict
+    scp_activated: bool
 
 class SCPCalculator:
-    def __init__(self, root_node: str, graph: nx.DiGraph, tis_result: TISResult, known_malicious_set: set):
-        self.root_node = root_node
+    def __init__(self, graph: nx.DiGraph, tis_result: TISResult, known_malicious_set: set[str], candidate_domain: str):
         self.graph = graph
         self.tis_result = tis_result
         self.known_malicious_set = known_malicious_set
+        self.candidate_domain = candidate_domain
+        self.threshold = settings.SCP_AGE_THRESHOLD_DAYS
 
     def find_siblings(self) -> list[str]:
-        # Sibling must share >= 2 infrastructure edge types with candidate domain d.
-        # Wait, the prompt says ">= 2 distinct edge types".
+        n_candidate = set(self.graph.successors(self.candidate_domain)) if self.candidate_domain in self.graph else set()
         siblings = []
-        if self.root_node not in self.graph:
-            return siblings
-
-        root_neighbors = set(self.graph.successors(self.root_node))
         
-        for node in self.graph.nodes():
-            if node == self.root_node:
+        for s in self.graph.nodes:
+            if s == self.candidate_domain:
                 continue
+                
+            n_s = set(self.graph.successors(s)) | set(self.graph.predecessors(s))
+            shared = n_candidate.intersection(n_s)
             
-            # Find nodes that act as "siblings" (domains that share the same infrastructure)
-            # Typically a sibling is another domain node. Is it a san_sibling? 
-            # We look for nodes that have out_edges to the shared infrastructure.
-            if not self.graph.out_degree(node):
-                 continue
-
-            node_out_neighbors = set(self.graph.successors(node))
-            shared_neighbors = root_neighbors.intersection(node_out_neighbors)
-            
-            # Count distinct edge types among shared edges
-            shared_edge_types = set()
-            for neighbor in shared_neighbors:
-                edge_data = self.graph.get_edge_data(node, neighbor)
-                if edge_data and "edge_type" in edge_data:
-                    shared_edge_types.add(edge_data["edge_type"])
-                    
-                root_edge_data = self.graph.get_edge_data(self.root_node, neighbor)
-                if root_edge_data and "edge_type" in root_edge_data:
-                    shared_edge_types.add(root_edge_data["edge_type"])
-
-            if len(shared_edge_types) >= 2 or self._is_san_sibling(node):
-                siblings.append(node)
+            if not shared:
+                continue
+                
+            edge_types = set()
+            for shared_node in shared:
+                if self.graph.has_edge(self.candidate_domain, shared_node):
+                    edge_data = self.graph.get_edge_data(self.candidate_domain, shared_node)
+                    if "edge_type" in edge_data:
+                        edge_types.add(edge_data["edge_type"])
+                        
+                if self.graph.has_edge(s, shared_node):
+                    edge_data = self.graph.get_edge_data(s, shared_node)
+                    if "edge_type" in edge_data:
+                        edge_types.add(edge_data["edge_type"])
+                        
+            if len(edge_types) >= 2:
+                siblings.append(str(s))
                 
         return siblings
-
-    def _is_san_sibling(self, node: str) -> bool:
-        # fallback if they are directly connected by certificate_sibling
-        if self.graph.has_edge(self.root_node, node):
-            if self.graph.get_edge_data(self.root_node, node).get("edge_type") == "certificate_sibling":
-                return True
-        return False
 
     def jaccard_similarity(self, node_a: str, node_b: str) -> float:
         if node_a not in self.graph or node_b not in self.graph:
             return 0.0
             
-        set_a = set(self.graph.successors(node_a))
-        set_b = set(self.graph.successors(node_b))
+        n_a = (set(self.graph.successors(node_a)) | set(self.graph.predecessors(node_a))) - {node_a}
+        n_b = (set(self.graph.successors(node_b)) | set(self.graph.predecessors(node_b))) - {node_b}
         
-        union_size = len(set_a.union(set_b))
-        if union_size == 0:
+        intersection = n_a & n_b
+        union = n_a | n_b
+        
+        if not union:
             return 0.0
             
-        intersection_size = len(set_a.intersection(set_b))
-        return intersection_size / union_size
+        return len(intersection) / len(union)
+
+    def _compute_sibling_tis(self, sibling: str) -> float:
+        try:
+            from app.services.egd_model import EGDModel
+            
+            if sibling not in self.graph:
+                return 0.5
+                
+            neighbors = set(self.graph.successors(sibling)) | set(self.graph.predecessors(sibling))
+            subgraph_nodes = neighbors | {sibling}
+            sibling_graph = self.graph.subgraph(subgraph_nodes).copy()
+            
+            egd_model = EGDModel()
+            baselines = egd_model.compute_all_baselines(1.0)
+            
+            tis_calc = TISCalculator(sibling_graph, baselines)
+            tis_res = tis_calc.compute_tis()
+            
+            return tis_res.tis_score
+        except Exception:
+            return 0.5
 
     def compute_sibling_weight(self, sibling: str) -> float:
-        j_val = self.jaccard_similarity(self.root_node, sibling)
+        j = self.jaccard_similarity(self.candidate_domain, sibling)
+        m = 1.0 if sibling in self.known_malicious_set else 0.0
+        tis_s = self._compute_sibling_tis(sibling)
         
-        m_s = 1.0 if sibling in self.known_malicious_set else 0.0
-        
-        # Lightweight TIS for sibling (assume same expected baseline and age for simplicity)
-        sib_tis_calc = TISCalculator(
-            root_node=sibling,
-            graph=self.graph,
-            egd_baselines=self.tis_result.expected_edges,
-            weights_dict={"infrastructure": 0.40, "certificate": 0.25, "ownership": 0.20, "routing": 0.15},
-            domain_age_days=self.tis_result.domain_age_days,
-            whois_failed=self.tis_result.whois_failed
-        )
-        sib_tis = sib_tis_calc.compute_tis().tis_score
-        
-        return j_val * (m_s + 0.5 * sib_tis)
+        return j * (m + 0.5 * tis_s)
 
     def compute_scp(self) -> SCPResult:
-        if self.tis_result.domain_age_days >= 1.0:
+        if self.tis_result.domain_age_days >= self.threshold:
             return SCPResult(
                 scp_score=0.0,
                 siblings_found=[],
@@ -103,20 +103,25 @@ class SCPCalculator:
             )
             
         siblings = self.find_siblings()
-        sibling_weights = {}
-        sum_w = 0.0
         
-        for sibling in siblings:
-            w_s = self.compute_sibling_weight(sibling)
-            sibling_weights[sibling] = w_s
-            sum_w += w_s
+        if not siblings:
+            return SCPResult(
+                scp_score=0.0,
+                siblings_found=[],
+                sibling_weights={},
+                scp_activated=True
+            )
             
-        norm_factor = max(1, len(siblings))
-        scp_score = min(1.0, sum_w / norm_factor)
+        weights = {}
+        for s in siblings:
+            weights[s] = self.compute_sibling_weight(s)
+            
+        scp_score = min(1.0, sum(weights.values()) / max(1, len(siblings)))
         
         return SCPResult(
             scp_score=scp_score,
             siblings_found=siblings,
-            sibling_weights=sibling_weights,
+            sibling_weights=weights,
             scp_activated=True
         )
+
