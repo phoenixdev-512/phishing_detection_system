@@ -1,78 +1,98 @@
-import React, { useRef, useEffect, useState } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
+import { transformGraphData } from '../utils/graphTransform';
 
-const NODE_COLORS = {
-  candidate: '#4FC3F7',
-  ip: '#FF9800',
-  ca: '#9C27B0',
-  nameserver: '#00BCD4',
-  asn: '#4CAF50',
-  san_sibling: '#FFEB3B',
-  known_malicious: '#F44336'
-};
-
-const EDGE_COLORS = {
-  infrastructure: '#FF9800',
-  certificate: '#9C27B0',
-  ownership: '#00BCD4',
-  routing: '#4CAF50',
-  certificate_sibling: '#FFEB3B'
-};
-
-export default function EgoGraphViewer({ graphData }) {
-  const containerRef = useRef();
-  const [dimensions, setDimensions] = useState({ width: 800, height: 420 });
+export default function EgoGraphViewer({ graphJson }) {
+  const containerRef = useRef(null);
+  const [width, setWidth] = useState(800);
+  const [hoveredNode, setHoveredNode] = useState(null);
 
   useEffect(() => {
-    if (containerRef.current) {
-      setDimensions({
-        width: containerRef.current.getBoundingClientRect().width,
-        height: 420
-      });
-    }
-  }, [containerRef.current]);
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      if (entries[0]) {
+        setWidth(entries[0].contentRect.width);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
-  if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
+  const graphData = transformGraphData(graphJson);
+
+  const nodeColor = (node) => {
+    switch (node.type) {
+      case 'candidate': return '#4FC3F7';
+      case 'ip': return '#FF9800';
+      case 'ca': return '#9C27B0';
+      case 'nameserver':
+      case 'registrar': return '#00BCD4';
+      case 'asn': return '#4CAF50';
+      case 'san_sibling': return '#FFEB3B';
+      case 'known_malicious': return '#F44336';
+      default: return '#8B949E';
+    }
+  };
+
+  const nodeVal = (node) => {
+    if (node.type === 'candidate') return 12;
+    if (node.type === 'known_malicious') return 8;
+    return 4;
+  };
+
+  const linkColor = (link) => {
+    switch (link.edge_type) {
+      case 'infrastructure': return '#FF9800';
+      case 'certificate': return '#9C27B0';
+      case 'certificate_sibling': return '#FFEB3B';
+      case 'ownership': return '#00BCD4';
+      case 'routing': return '#4CAF50';
+      default: return '#8B949E';
+    }
+  };
+
+  if (!graphData.nodes || graphData.nodes.length === 0) {
     return (
-      <div style={{ height: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827', borderRadius: '12px', border: '1px solid #374151', color: '#9ca3af' }}>
+      <div className="relative rounded-lg overflow-hidden border border-tgis-border bg-tgis-panel h-[420px] flex items-center justify-center text-tgis-text">
         Graph data unavailable — check backend connectivity.
       </div>
     );
   }
 
-  // Pre-process for links since react-force-graph expects simple source/target
-  const formattedData = {
-    nodes: graphData.nodes.map(n => ({ ...n })),
-    links: graphData.links.map(l => ({ ...l, source: l.source, target: l.target }))
-  };
-
   return (
-    <div ref={containerRef} style={{ position: 'relative', height: '420px', backgroundColor: '#111827', borderRadius: '12px', border: '1px solid #374151', overflow: 'hidden' }}>
+    <div ref={containerRef} className="relative rounded-lg overflow-hidden border border-tgis-border bg-tgis-panel h-[420px]">
       <ForceGraph2D
-        width={dimensions.width}
-        height={dimensions.height}
-        graphData={formattedData}
-        nodeRelSize={1}
-        nodeVal={n => n.type === 'candidate' ? 144 : 36}
-        nodeColor={n => NODE_COLORS[n.type] || '#fff'}
-        nodeLabel={n => `ID: ${n.id}\nType: ${n.type}${n.threat_score !== undefined ? '\\nThreat Score: ' + n.threat_score : ''}${n.domain_creation_date ? '\\nCreated: ' + n.domain_creation_date : ''}`}
-        linkColor={l => EDGE_COLORS[l.edge_type] || '#555'}
-        linkWidth={1.5}
-        linkDirectionalArrowLength={3.5}
+        width={width}
+        height={420}
+        graphData={graphData}
+        nodeColor={nodeColor}
+        nodeVal={nodeVal}
+        linkColor={linkColor}
+        linkDirectionalArrowLength={4}
         linkDirectionalArrowRelPos={1}
+        backgroundColor="#0D1117"
+        onNodeHover={setHoveredNode}
       />
-      
-      {/* Legend */}
-      <div style={{ position: 'absolute', bottom: '16px', left: '16px', backgroundColor: 'rgba(17, 24, 39, 0.8)', padding: '12px', borderRadius: '8px', border: '1px solid #374151', fontSize: '12px', color: '#fff' }}>
-        <h4 style={{ margin: '0 0 8px 0', fontSize: '13px' }}>Node Types</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          {Object.entries(NODE_COLORS).map(([type, color]) => (
-            <div key={type} style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: color, marginRight: '6px' }} />
-              {type}
-            </div>
-          ))}
+
+      {hoveredNode && (
+        <div className="absolute top-2 left-2 bg-tgis-bg border border-tgis-border p-2 rounded shadow-md text-sm pointer-events-none z-10 text-tgis-text">
+          <p><strong>ID:</strong> {hoveredNode.id}</p>
+          <p><strong>Type:</strong> {hoveredNode.type}</p>
+          {hoveredNode.threat_score !== undefined && (
+            <p className="text-tgis-suspicious">Threat score: {hoveredNode.threat_score.toFixed(2)}</p>
+          )}
         </div>
+      )}
+
+      <div className="absolute bottom-2 left-2 bg-tgis-bg border border-tgis-border p-2 rounded shadow-md text-xs pointer-events-none z-10 grid grid-cols-2 gap-2">
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#4FC3F7]" /> <span className="text-tgis-text">candidate</span></div>
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#FF9800]" /> <span className="text-tgis-text">ip</span></div>
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#9C27B0]" /> <span className="text-tgis-text">ca</span></div>
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#00BCD4]" /> <span className="text-tgis-text">nameserver / registrar</span></div>
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#4CAF50]" /> <span className="text-tgis-text">asn</span></div>
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#FFEB3B]" /> <span className="text-tgis-text">san_sibling</span></div>
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#F44336]" /> <span className="text-tgis-text">known_malicious</span></div>
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#8B949E]" /> <span className="text-tgis-text">default</span></div>
       </div>
     </div>
   );

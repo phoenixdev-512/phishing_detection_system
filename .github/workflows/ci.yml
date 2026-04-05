@@ -1,79 +1,67 @@
-name: TGIS CI Pipeline
+﻿name: CI
 
 on:
   push:
-    branches: [ main, protect-master ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    - name: Install Linting dependencies
-      run: pip install ruff black
-    - name: Black Formatting
-      run: black --check app/ tests/
-    - name: Ruff Linter
-      run: ruff check app/ tests/
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff black
+      - run: ruff check .
+      - run: black --check .
 
   type-check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    - name: Install mypy
-      run: pip install mypy networkx pydantic
-    - name: Mypy Check
-      run: mypy app/ --ignore-missing-imports
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt mypy
+      - run: mypy app/ --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+      API_KEY: ""
+      ALLOWED_ORIGINS: '["http://localhost:5173"]'
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    - name: Install Dependencies
-      run: |
-        pip install -r requirements.txt
-        pip install pytest pytest-asyncio pytest-cov
-    - name: Run Pytest
-      run: pytest tests/ -v --cov=app --cov-report=term-missing
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt pytest pytest-asyncio httpx pytest-cov
+      - run: pytest tests/ -v --cov=app --cov-report=term-missing
 
   frontend-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-    - name: Install Frontend deps
-      working-directory: ./frontend
-      run: npm ci
-    - name: Run Vue/React Tests
-      working-directory: ./frontend
-      run: npm run test
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npm run test -- --reporter=verbose
 
   security-scan:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    - name: Install Bandit
-      run: pip install bandit
-    - name: Bandit Scan
-      run: bandit -r app/ -ll
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install bandit
+      - run: bandit -r app/ -ll
