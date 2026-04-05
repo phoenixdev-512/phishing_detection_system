@@ -1,102 +1,120 @@
 import posixpath
-import time
 import re
+import time
+import urllib.parse
 from dataclasses import dataclass
-from urllib.parse import urlsplit, unquote
+
 import tldextract
+
 
 @dataclass
 class CandidateDomain:
     raw_url: str
-    candidate_domain: str   # $d$ - the eTLD+1
-    fqdn: str               # full decoded authority
-    subdomain: str
-    scheme: str
-    temporal_anchor: float  # $t$ - POSIX timestamp
-    is_ip: bool             # True if netloc is an IPv4/IPv6 literal
-    punycode_converted: bool  # True if IDN conversion was applied
+    candidate_domain: str   # eTLD+1, e.g. "example.com"
+    fqdn: str               # full decoded authority, e.g. "login.evil.com"
+    subdomain: str          # subdomain component, e.g. "login"
+    scheme: str             # "https" or "http"
+    temporal_anchor: float  # time.time() recorded at ingestion
+    is_ip: bool             # True if netloc is an IPv4 or IPv6 literal
+    punycode_converted: bool  # True if IDN ToASCII was applied
 
-# Regex for IPv4/IPv6 literal detection
-IP_REGEX = re.compile(
-    r'^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|'  # IPv4
-    r'^\[?([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}\]?$'  # Basic IPv6
-)
-
-# Shared TLD Extractor instance
-tld_extractor = tldextract.TLDExtract(include_psl_private_domains=True)
 
 def extract_candidate_domain(raw_url: str) -> CandidateDomain:
-    # Pre-step: Add default scheme if totally missing, so urlsplit doesn't treat netloc as path
-    if not re.match(r'^[a-zA-Z]+://', raw_url):
-        raw_url_for_parsing = 'http://' + raw_url
-    else:
-        raw_url_for_parsing = raw_url
+    # Step 2a — RFC 3986 decomposition
+    url_to_parse = raw_url.strip()
+    if not url_to_parse.startswith("http://") and not url_to_parse.startswith("https://"):
+        url_to_parse = "http://" + url_to_parse
+    parsed = urllib.parse.urlsplit(url_to_parse)
 
-    # Step 1: Decomposition
-    parts = urlsplit(raw_url_for_parsing)
-    scheme = parts.scheme
-    netloc = parts.netloc
-    path = parts.path
+    # Step 2b — Percent-decoding
+    netloc = urllib.parse.unquote(parsed.netloc)
+    path = urllib.parse.unquote(parsed.path)
 
-    # Step 2: Percent-Decoding
-    netloc = unquote(netloc)
-    path = unquote(path)
-
-    # Step 3: Canonicalization
-    scheme = scheme.lower()
+    # Step 2c — Canonicalization
+    scheme = parsed.scheme.lower()
     netloc = netloc.lower()
-    
+
     # Strip default ports
-    if scheme == 'http' and netloc.endswith(':80'):
+    if scheme == "http" and netloc.endswith(":80"):
         netloc = netloc[:-3]
-    elif scheme == 'https' and netloc.endswith(':443'):
+    elif scheme == "https" and netloc.endswith(":443"):
         netloc = netloc[:-4]
-    
+
     # Resolve relative path traversals
     if path:
         path = posixpath.normpath(path)
-
-    # Step 4: IDN Punycode Conversion
-    labels = netloc.split('.')
-    punycode_converted = False
-    ascii_labels = []
-    
-    for label in labels:
-        try:
-            ascii_label = label.encode('idna').decode('ascii')
-            if ascii_label != label:
-                punycode_converted = True
-            ascii_labels.append(ascii_label)
-        except UnicodeError:
-            ascii_labels.append(label)
-    
-    fqdn = '.'.join(ascii_labels)
-
-    # IPv4/IPv6 fast check
-    is_ip = bool(IP_REGEX.match(fqdn))
-
-    # Step 5: Candidate Domain extraction
-    extracted = tld_extractor(fqdn)
-
-    
-    if is_ip:
-        candidate_domain = fqdn
+        if path == ".":
+            path = ""
     else:
-        candidate_domain = extracted.registered_domain
-        
-    if not candidate_domain:
-        raise ValueError("Cannot extract valid candidate domain from input")
+        path = ""
 
-    # Step 6: State Initialization
+    # Step 2d — IDN Punycode conversion
+    punycode_converted = False
+    # IPv6 literals are enclosed in brackets — do not attempt port-splitting on them
+    if netloc.startswith("["):
+        # IPv6 literal: [::1] or [::1]:port
+        bracket_end = netloc.find("]")
+        host_part = netloc[:bracket_end + 1]   # includes brackets, e.g. "[::1]"
+        port_suffix = netloc[bracket_end + 1:]  # e.g. ":8080" or ""
+        # No Punycode conversion for IP literals
+    elif ":" in netloc:
+        host_part, port_part = netloc.rsplit(":", 1)
+        port_suffix = ":" + port_part
+    else:
+        host_part = netloc
+        port_suffix = ""
+
+    # Only attempt IDNA conversion on non-IP (non-bracket) hosts
+    if not host_part.startswith("["):
+        labels = host_part.split(".")
+        converted_labels = []
+        for label in labels:
+            try:
+                converted = label.encode("idna").decode("ascii")
+                if converted != label:
+                    punycode_converted = True
+                converted_labels.append(converted)
+            except UnicodeError:
+                converted_labels.append(label)
+        host_part = ".".join(converted_labels)
+
+    netloc = host_part + port_suffix
+
+    # Step 2e — IP literal detection (re used only here)
+    # Strip port for IP check
+    host_for_ip_check = host_part
+
+    ipv4_pattern = re.compile(
+        r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
+    )
+    is_ip = bool(ipv4_pattern.match(host_for_ip_check)) or (
+        host_for_ip_check.startswith("[") and host_for_ip_check.endswith("]")
+    )
+
+    # Step 2f — Candidate domain extraction
+    if is_ip:
+        candidate_domain = host_for_ip_check.strip("[]")
+        subdomain = ""
+        fqdn = host_for_ip_check
+    else:
+        fqdn = host_part
+        extracted = tldextract.extract(host_part, include_psl_private_domains=True)
+        candidate_domain = extracted.registered_domain
+        if not candidate_domain:
+            raise ValueError(f"Cannot extract valid candidate domain from: {raw_url}")
+        subdomain = extracted.subdomain
+
+    # Step 2g — Record temporal anchor
     temporal_anchor = time.time()
 
+    # Step 2h — Return populated dataclass
     return CandidateDomain(
         raw_url=raw_url,
         candidate_domain=candidate_domain,
         fqdn=fqdn,
-        subdomain=extracted.subdomain,
+        subdomain=subdomain,
         scheme=scheme,
         temporal_anchor=temporal_anchor,
         is_ip=is_ip,
-        punycode_converted=punycode_converted
+        punycode_converted=punycode_converted,
     )
