@@ -3,48 +3,43 @@ from app.core.config import settings
 
 class EGDModel:
     def __init__(self):
-        self.params = settings.EGD_PARAMS
-        self.baselines = {}
-        self.clamped_age_days = 1.0
-        self.whois_failed = False
+        self.params = getattr(settings, "EGD_PARAMS", {})
+        required_keys = ["infrastructure", "certificate", "ownership", "routing"]
+        for key in required_keys:
+            if key not in self.params:
+                raise ValueError(f"Missing required key '{key}' in EGD_PARAMS")
 
     def expected_edges(self, edge_type: str, domain_age_days: float) -> float:
         if edge_type not in self.params:
-            return 0.0
+            raise KeyError(f"Invalid edge_type: {edge_type}")
         
-        # Clamp age
         a = max(0.0, min(float(domain_age_days), 3650.0))
+        params = self.params[edge_type]
+        alpha = params["alpha"]
+        beta = params["beta"]
+        gamma = params["gamma"]
         
-        p = self.params[edge_type]
-        alpha = p["alpha"]
-        beta = p["beta"]
-        gamma = p["gamma"]
-        
-        # Piecewise exponential saturation function
-        return alpha * (1 - math.exp(-beta * a)) + gamma
+        result = alpha * (1 - math.exp(-beta * a)) + gamma
+        return result
 
-    def compute_all_baselines(self, domain_age_days: float | None) -> dict:
-        self.whois_failed = False
-        if domain_age_days is None:
-            self.clamped_age_days = 1.0
-            self.whois_failed = True
+    def compute_all_baselines(self, domain_age_days: float, whois_failed: bool = False) -> dict:
+        if whois_failed:
+            age_to_use = 1.0
         else:
-            self.clamped_age_days = max(0.0, min(float(domain_age_days), 3650.0))
-            
-        self.baselines = {
-            edge_type: self.expected_edges(edge_type, self.clamped_age_days)
-            for edge_type in self.params.keys()
-        }
+            age_to_use = max(0.0, min(float(domain_age_days), 3650.0))
+
+        baselines = {}
+        for edge_type in ["infrastructure", "certificate", "ownership", "routing"]:
+            baselines[edge_type] = self.expected_edges(edge_type, age_to_use)
         
-        # Merge whois_failed into the returned baselines dict per spec
-        if self.whois_failed:
-            self.baselines["whois_failed"] = True
-            
-        return self.baselines
+        baselines["domain_age_days_used"] = age_to_use
+        baselines["whois_failed"] = whois_failed
+        return baselines
 
     def serialize(self) -> dict:
+        import copy
         return {
-            "parameters_used": self.params,
-            "computed_baselines": self.baselines
+            "model_params": copy.deepcopy(self.params),
+            "note": "Call compute_all_baselines(age) for age-specific expected counts"
         }
 
