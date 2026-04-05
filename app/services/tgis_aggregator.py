@@ -1,107 +1,110 @@
+import dataclasses
+from dataclasses import dataclass
 from app.core.config import settings
 from app.services.tis_calculator import TISResult
 from app.services.scp_calculator import SCPResult
-from networkx.readwrite import json_graph
-import networkx as nx
+
+@dataclass
+class TGISResult:
+    tgis_score: float
+    tis_score: float
+    scp_score: float
+    residual_heuristic: float
+    status: str
+    risk_score: int
+    verdict_source: str
+    reasons: list[str]
+    recommendation: str
+    domain_age_days: float
+    scp_activated: bool
 
 class TGISAggregator:
-    def __init__(self, 
-                 url: str,
-                 graph: nx.DiGraph,
-                 tis_result: TISResult, 
-                 scp_result: SCPResult, 
-                 residual_heuristic_score: float, 
-                 blacklist_hit: bool):
-        self.url = url
-        self.graph = graph
+    def __init__(self, tis_result: TISResult, scp_result: SCPResult,
+                 residual_heuristic: float, blacklist_hit: bool,
+                 candidate_domain: str, known_malicious_set: set[str] = None):
         self.tis_result = tis_result
         self.scp_result = scp_result
-        self.residual_heuristic_score = residual_heuristic_score
+        self.residual_heuristic = residual_heuristic
         self.blacklist_hit = blacklist_hit
+        self.candidate_domain = candidate_domain
+        self.known_malicious_set = known_malicious_set or set()
         
-        self.alpha_w = settings.TGIS_ALPHA
-        self.beta_w = settings.TGIS_BETA
-        self.gamma_w = settings.TGIS_GAMMA
+        self.alpha = settings.TGIS_ALPHA
+        self.beta = settings.TGIS_BETA
+        self.gamma = settings.TGIS_GAMMA
 
-    def aggregate(self) -> dict:
+    def aggregate(self) -> TGISResult:
         if self.blacklist_hit:
-            return {
-                "url": self.url,
-                "status": "malicious",
-                "risk_score": 100,
-                "verdict_source": "TGIS_Pipeline",
-                "reasons": ["Blacklist direct match override."],
-                "recommendation": "MALICIOUS - Do not proceed.",
-                "details": {},
-                "tgis_score": 1.0,
-                "tis_score": None,
-                "scp_score": None,
-                "residual_heuristic": None,
-                "domain_age_days": None,
-                "scp_activated": False,
-                "siblings": [],
-                "graph_summary": None,
-                "graph_json": None
-            }
-            
-        tis = self.tis_result.tis_score
-        scp = self.scp_result.scp_score
-        r = self.residual_heuristic_score
-        
-        tgis_final = self.alpha_w * tis + self.beta_w * scp + self.gamma_w * r
-        tgis_final = min(1.0, max(0.0, tgis_final))
-        
-        reasons = [
-            f"TIS component: {tis:.2f}",
-            f"Legacy heuristic component: {r:.2f}"
-        ]
-        if self.scp_result.scp_activated:
-            reasons.append(f"SCP activated: {len(self.scp_result.siblings_found)} siblings found contributing {scp:.2f}")
+            return TGISResult(
+                tgis_score=1.0,
+                tis_score=1.0,
+                scp_score=1.0,
+                residual_heuristic=1.0,
+                status="malicious",
+                risk_score=100,
+                verdict_source="Blacklist",
+                reasons=["Domain found in local malicious URL blacklist."],
+                recommendation=self._get_recommendation("malicious"),
+                domain_age_days=self.tis_result.domain_age_days,
+                scp_activated=False
+            )
 
-        if tgis_final < 0.30:
+        tgis = (self.alpha * self.tis_result.tis_score +
+                self.beta * self.scp_result.scp_score +
+                self.gamma * self.residual_heuristic)
+        tgis = max(0.0, min(1.0, tgis))
+
+        if tgis < 0.30:
             status = "safe"
-            recommendation = "SAFE - The domain graph aligns with baseline infrastructure."
-        elif tgis_final < 0.60:
+        elif tgis < 0.60:
             status = "suspicious"
-            recommendation = "WARNING - Anomalous infrastructure footprint."
         else:
             status = "malicious"
-            recommendation = "MALICIOUS - High likelihood of phishing via Temporal Graph Isolation."
 
-        # Compute graph summary
-        graph_summary = {
-            "total_nodes": self.graph.number_of_nodes(),
-            "total_edges": self.graph.number_of_edges(),
-            "edge_counts": self.tis_result.observed_edges,
-            "expected_edges": self.tis_result.expected_edges
-        }
+        reasons = []
+        for k, i_k in self.tis_result.per_type_isolation.items():
+            if i_k > 0.5:
+                obs = self.tis_result.observed_edges.get(k, 0)
+                exp = self.tis_result.expected_edges.get(k, 0.0)
+                reasons.append(f"TIS: {k} isolation {i_k:.2f} (observed {obs}, expected {exp:.1f})")
 
-        # Format siblings list for UI
-        from app.services.database import db_service
-        siblings_ui = []
-        for sib in self.scp_result.siblings_found:
-            siblings_ui.append({
-                "domain": sib,
-                "weight": self.scp_result.sibling_weights.get(sib, 0.0),
-                "is_known_malicious": bool(db_service.check_url(sib))
-            })
+        if self.scp_result.scp_activated and self.scp_result.scp_score > 0:
+            n_malicious = sum(1 for s in self.scp_result.siblings_found if s in self.known_malicious_set)
+            reasons.append(
+                f"SCP: {len(self.scp_result.siblings_found)} sibling(s) detected "
+                f"(contamination score {self.scp_result.scp_score:.2f})"
+            )
 
-        return {
-            "url": self.url,
-            "status": status,
-            "risk_score": int(tgis_final * 100),
-            "verdict_source": "TGIS_Pipeline",
-            "reasons": reasons,
-            "recommendation": recommendation,
-            "details": {},  # For latency timings or debugging metrics
-            
-            "tgis_score": tgis_final,
-            "tis_score": self.tis_result.tis_score,
-            "scp_score": self.scp_result.scp_score,
-            "residual_heuristic": self.residual_heuristic_score,
-            "domain_age_days": self.tis_result.domain_age_days,
-            "scp_activated": self.scp_result.scp_activated,
-            "siblings": siblings_ui,
-            "graph_summary": graph_summary,
-            "graph_json": json_graph.node_link_data(self.graph)
-        }
+        if self.scp_result.scp_activated:
+            age_hours = round(self.tis_result.domain_age_days * 24, 1)
+            reasons.append(f"SCP activated: domain is {age_hours}h old")
+
+        if self.residual_heuristic > 0.3:
+            reasons.append(f"Residual heuristics flagged (score {self.residual_heuristic:.2f})")
+
+        if not reasons:
+            reasons.append("No significant threat indicators detected.")
+
+        return TGISResult(
+            tgis_score=tgis,
+            tis_score=self.tis_result.tis_score,
+            scp_score=self.scp_result.scp_score,
+            residual_heuristic=self.residual_heuristic,
+            status=status,
+            risk_score=round(tgis * 100),
+            verdict_source="TGIS",
+            reasons=reasons,
+            recommendation=self._get_recommendation(status),
+            domain_age_days=self.tis_result.domain_age_days,
+            scp_activated=self.scp_result.scp_activated
+        )
+
+    def _get_recommendation(self, status: str) -> str:
+        if status == "safe":
+            return "SAFE — No infrastructure anomalies detected. Always verify the URL matches your intended destination."
+        elif status == "suspicious":
+            return "SUSPICIOUS — Infrastructure graph shows partial isolation. Proceed with caution and verify the domain independently."
+        elif status == "malicious":
+            return "MALICIOUS — Do not visit this URL. Infrastructure analysis indicates a high-risk domain. Close this tab immediately."
+        return ""
+

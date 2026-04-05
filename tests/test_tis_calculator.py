@@ -1,51 +1,72 @@
+# FILE 2: tests/test_tis_calculator.py
 import pytest
 import networkx as nx
-from app.services.tis_calculator import TISCalculator
+from app.services.tis_calculator import TISCalculator, TISResult
+from app.services.egd_model import EGDModel
 
-def test_tis_calculation_safe():
-    graph = nx.DiGraph()
-    graph.add_node("example.com")
-    # Add dummy edges to make observed > expected
-    for i in range(10):
-        graph.add_edge("example.com", f"ip{i}", edge_type="infrastructure")
-        
-    baselines = {
-        "infrastructure": 5.0,
-        "certificate": 0.0,
-        "ownership": 0.0,
-        "routing": 0.0
-    }
-    
-    mock_weights = {
-        "infrastructure": 0.40,
-        "certificate": 0.25,
-        "ownership": 0.20,
-        "routing": 0.15
-    }
-    
-    calc = TISCalculator("example.com", graph, baselines, mock_weights, 100.0, False)
-    res = calc.compute_tis()
-    
-    assert res.tis_score == 0.0 # safe
+def build_test_graph(edge_type_counts: dict) -> nx.DiGraph:
+    g = nx.DiGraph()
+    g.add_node("test.com", type="candidate")
+    for i, (edge_type, count) in enumerate(edge_type_counts.items()):
+        for j in range(count):
+            node_id = f"node_{i}_{j}"
+            g.add_node(node_id)
+            g.add_edge("test.com", node_id, edge_type=edge_type)
+    return g
 
-def test_tis_calculation_malicious():
-    graph = nx.DiGraph()
-    graph.add_node("example.com")
-    # 0 edges, but expect many
-    baselines = {
-        "infrastructure": 10.0,
-        "certificate": 5.0,
-        "ownership": 2.0,
-        "routing": 1.0
-    }
-    calc = TISCalculator("example.com", graph, baselines, {
-        "infrastructure": 0.40,
-        "certificate": 0.25,
-        "ownership": 0.20,
-        "routing": 0.15
-    }, 100.0, False)
-    res = calc.compute_tis()
+def test_tis_zero_when_fully_connected():
+    model = EGDModel()
+    baselines = model.compute_all_baselines(0.1)
+    graph = build_test_graph({
+        "infrastructure": 10,
+        "certificate": 10,
+        "ownership": 10,
+        "routing": 10
+    })
+    calc = TISCalculator(graph, baselines)
+    result = calc.compute_tis()
+    assert result.tis_score == 0.0
+
+def test_tis_one_when_fully_isolated():
+    model = EGDModel()
+    baselines = model.compute_all_baselines(30.0)
+    graph = build_test_graph({
+        "infrastructure": 0,
+        "certificate": 0,
+        "ownership": 0,
+        "routing": 0
+    })
+    calc = TISCalculator(graph, baselines)
+    result = calc.compute_tis()
+    assert result.tis_score == pytest.approx(1.0, abs=0.01)
+
+def test_per_type_isolation_in_result():
+    model = EGDModel()
+    baselines = model.compute_all_baselines(10.0)
+    graph = build_test_graph({"infrastructure": 1})
+    calc = TISCalculator(graph, baselines)
+    result = calc.compute_tis()
     
-    # Since observed is 0, isolation for each component is expected/expected = 1.0
-    # Weights sum to 1.0, so tis_score = 1.0
-    assert res.tis_score == 1.0
+    for key in ["infrastructure", "certificate", "ownership", "routing"]:
+        assert key in result.per_type_isolation
+        assert 0.0 <= result.per_type_isolation[key] <= 1.0
+
+def test_weight_normalization():
+    model = EGDModel()
+    baselines = model.compute_all_baselines(30.0)
+    graph = build_test_graph({})
+    calc = TISCalculator(graph, baselines)
+    result = calc.compute_tis()
+    
+    expected_sum = sum(calc.weights.values())
+    assert result.tis_score == pytest.approx(expected_sum, abs=0.01)
+
+def test_zero_expected_no_division_error():
+    model = EGDModel()
+    baselines = model.compute_all_baselines(0.0)
+    graph = build_test_graph({})
+    calc = TISCalculator(graph, baselines)
+    result = calc.compute_tis()
+    
+    assert result.per_type_isolation["certificate"] == 0.0
+
