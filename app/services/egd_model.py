@@ -1,9 +1,32 @@
 import math
+import json
+import logging
+from pathlib import Path
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 class EGDModel:
     def __init__(self):
-        self.params = getattr(settings, "EGD_PARAMS", {})
+        self.params = getattr(settings, "EGD_PARAMS", {}).copy()
+        
+        # Attempt to load dynamically trained ML params
+        trained_params_path = Path("data/egd_trained_params.json")
+        if trained_params_path.exists():
+            try:
+                with open(trained_params_path, "r") as f:
+                    trained_data = json.load(f)
+                
+                # Merge dynamically trained params into config ones
+                for key, val in trained_data.items():
+                    if key in self.params and isinstance(val, dict):
+                        self.params[key].update({
+                            k: v for k, v in val.items() if k in ["alpha", "beta", "gamma"]
+                        })
+                logger.info("Loaded trained EGD parameters from disk.")
+            except Exception as e:
+                logger.warning(f"Failed to load trained EGD params: {e}. Falling back to config.")
+        
         required_keys = ["infrastructure", "certificate", "ownership", "routing"]
         for key in required_keys:
             if key not in self.params:
