@@ -21,13 +21,16 @@ class TGISResult:
 class TGISAggregator:
     def __init__(self, tis_result: TISResult, scp_result: SCPResult,
                  residual_heuristic: float, blacklist_hit: bool,
-                 candidate_domain: str, known_malicious_set: set[str] = None):
+                 candidate_domain: str, known_malicious_set: set[str] = None,
+                 graph_node_count: int = 0, graph_edge_count: int = 0):
         self.tis_result = tis_result
         self.scp_result = scp_result
         self.residual_heuristic = residual_heuristic
         self.blacklist_hit = blacklist_hit
         self.candidate_domain = candidate_domain
         self.known_malicious_set = known_malicious_set or set()
+        self.graph_node_count = graph_node_count
+        self.graph_edge_count = graph_edge_count
         
         self.alpha = settings.TGIS_ALPHA
         self.beta = settings.TGIS_BETA
@@ -49,9 +52,30 @@ class TGISAggregator:
                 scp_activated=False
             )
 
-        tgis = (self.alpha * self.tis_result.tis_score +
-                self.beta * self.scp_result.scp_score +
-                self.gamma * self.residual_heuristic)
+        from app.services.ml_signal import predict_ml_score
+
+        ml_score = predict_ml_score(
+            self.tis_result, self.scp_result,
+            self.residual_heuristic,
+            self.graph_node_count,
+            self.graph_edge_count
+        )
+
+        if ml_score is not None:
+            # γ_ml = 0.10; re-normalize other weights
+            # New equation: α*TIS + β*SCP + γ*R + γ_ml*ML
+            # where α=0.50, β=0.25, γ=0.15, γ_ml=0.10 (sum=1.00)
+            tgis = (0.50 * self.tis_result.tis_score
+                  + 0.25 * self.scp_result.scp_score
+                  + 0.15 * self.residual_heuristic
+                  + 0.10 * ml_score)
+            verdict_source_suffix = "+ML"
+        else:
+            tgis = (self.alpha * self.tis_result.tis_score +
+                    self.beta * self.scp_result.scp_score +
+                    self.gamma * self.residual_heuristic)
+            verdict_source_suffix = ""
+
         tgis = max(0.0, min(1.0, tgis))
 
         if tgis < 0.30:
@@ -92,7 +116,7 @@ class TGISAggregator:
             residual_heuristic=self.residual_heuristic,
             status=status,
             risk_score=round(tgis * 100),
-            verdict_source="TGIS",
+            verdict_source=f"TGIS_Pipeline{verdict_source_suffix}",
             reasons=reasons,
             recommendation=self._get_recommendation(status),
             domain_age_days=self.tis_result.domain_age_days,
@@ -101,10 +125,10 @@ class TGISAggregator:
 
     def _get_recommendation(self, status: str) -> str:
         if status == "safe":
-            return "SAFE � No infrastructure anomalies detected. Always verify the URL matches your intended destination."
+            return "SAFE � No infrastructure anomalies detected. Always verify the URL matches your intended destination."
         elif status == "suspicious":
-            return "SUSPICIOUS � Infrastructure graph shows partial isolation. Proceed with caution and verify the domain independently."
+            return "SUSPICIOUS � Infrastructure graph shows partial isolation. Proceed with caution and verify the domain independently."
         elif status == "malicious":
-            return "MALICIOUS � Do not visit this URL. Infrastructure analysis indicates a high-risk domain. Close this tab immediately."
+            return "MALICIOUS � Do not visit this URL. Infrastructure analysis indicates a high-risk domain. Close this tab immediately."
         return ""
 

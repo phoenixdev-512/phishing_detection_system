@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "phishing_db.sqlite"
 
     # Security
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8000"]
     API_KEY: str | None = None
     RATE_LIMIT_PER_MINUTE: int = 30
 

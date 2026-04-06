@@ -1,35 +1,28 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { scanUrl as clientScanUrl } from '../api/client';
 
-export function useScan() {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+export const useScan = () => {
+    const [result, setResult] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
 
-  const scanUrl = async (url) => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    
-    try {
-      const response = await fetch('http://127.0.0.1:8000/api/v1/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to scan URL');
-      }
-      
-      setResult(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const scan = useCallback(async (url) => {
+        if (!url || !url.trim()) {
+            setError('Please enter a URL to scan.');
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        setResult(null);
+        try {
+            const data = await clientScanUrl(url.trim());
+            setResult(data);
+        } catch (err) {
+            setError(err.message || 'Scan failed. Check the backend connection.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
-  return { scanUrl, loading, result, error };
-}
+    return { result, loading, error, scan };
+};

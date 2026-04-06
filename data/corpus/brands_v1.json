@@ -1,0 +1,25 @@
+{
+  "version": "1.0.0",
+  "created_at": "2025-01-01T00:00:00Z",
+  "description": "High-value brand targets for typosquatting detection",
+  "brands": [
+    "paypal", "google", "microsoft", "apple", "amazon", "facebook",
+    "instagram", "twitter", "linkedin", "netflix", "spotify", "dropbox",
+    "github", "gitlab", "bitbucket", "slack", "zoom", "stripe", "shopify",
+    "wordpress", "godaddy", "namecheap", "cloudflare", "aws", "azure",
+    "chase", "wellsfargo", "bankofamerica", "citibank", "barclays", "hsbc",
+    "binance", "coinbase", "kraken", "blockchain", "metamask",
+    "icloud", "outlook", "office365", "onedrive", "gmail", "yahoo",
+    "steam", "twitch", "discord", "reddit", "pinterest", "tiktok",
+    "alibaba", "aliexpress", "ebay", "walmart", "target", "bestbuy",
+    "fedex", "ups", "dhl", "usps", "irs", "ssa", "medicare"
+  ],
+  "suspicious_keywords": [
+    "login", "signin", "sign-in", "account", "verify", "verification",
+    "secure", "security", "update", "confirm", "confirmation", "validate",
+    "password", "passwd", "credential", "billing", "invoice", "payment",
+    "bank", "wallet", "withdraw", "transfer", "wire", "urgent", "alert",
+    "suspended", "locked", "unauthorized", "unusual", "activity",
+    "recover", "recovery", "reset", "click", "limited", "offer", "free"
+  ]
+}

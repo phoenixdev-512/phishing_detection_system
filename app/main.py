@@ -31,6 +31,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str):
+    return {}
+
 @app.middleware("http")
 async def verify_api_key(request: Request, call_next):
     env_api_key = os.getenv("API_KEY")

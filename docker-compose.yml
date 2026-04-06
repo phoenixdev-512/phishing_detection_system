@@ -1,0 +1,29 @@
+version: '3.9'
+
+services:
+  tgis-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tgis-phishing-detector
+    ports:
+      - "8000:8000"
+    volumes:
+      - tgis-data:/data
+    environment:
+      - DATABASE_URL=/data/phishing_db.sqlite
+      - ALLOWED_ORIGINS=["http://localhost:8000","http://localhost:3000","http://localhost:5173"]
+      - TGIS_TIMEOUT_MS=200
+      - RATE_LIMIT_PER_MINUTE=30
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  tgis-data:
+    name: tgis-phishing-data

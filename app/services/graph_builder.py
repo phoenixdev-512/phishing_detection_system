@@ -157,37 +157,76 @@ class EgoGraphBuilder:
             
         self.thread_results["whois"] = "success"
 
+    RDAP_REGISTRIES = [
+        "https://rdap.arin.net/registry/ip",    # North America
+        "https://rdap.db.ripe.net/ip",          # Europe, Middle East, Central Asia
+        "https://rdap.apnic.net/ip",            # Asia Pacific
+        "https://rdap.lacnic.net/rdap/ip",      # Latin America & Caribbean
+        "https://rdap.afrinic.net/rdap/ip",     # Africa
+    ]
+
     async def _fetch_bgp(self, session: aiohttp.ClientSession) -> None:
-        first_ip = None
-        for node, data in self.graph.nodes(data=True):
-            if data.get("type") == "ip":
-                first_ip = node
-                break
-        
-        if not first_ip:
-            self.thread_results["bgp"] = "success"
+        # Get the first IP from the graph (added by PDNS thread)
+        ip_nodes = [n for n, d in self.graph.nodes(data=True)
+                    if d.get("type") == "ip"]
+        if not ip_nodes:
+            self.thread_results["bgp"] = "skipped_no_ips"
             return
 
-        url = f"{settings.RDAP_API_URL}/{first_ip}"
-        try:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                data = await response.json()
-                asn = None
-                if "handle" in data:
-                    asn = str(data["handle"])
-                elif "autnums" in data and isinstance(data["autnums"], list) and len(data["autnums"]) > 0:
-                    asn = str(data["autnums"][0].get("handle", ""))
-                
-                if asn:
-                    self.graph.add_node(asn, type="asn")
-                    self.graph.add_edge(self.candidate.candidate_domain, asn,
-                                        edge_type="routing", observed_at=time.time())
-        except Exception as e:
-            logger.warning(f"bgp fetch error: {e}")
-            raise
-        
-        self.thread_results["bgp"] = "success"
+        target_ip = ip_nodes[0]
+
+        # Try all registries in parallel, take the first successful response
+        async def query_registry(base_url: str) -> dict | None:
+            try:
+                url = f"{base_url}/{target_ip}"
+                async with session.get(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=3.0),
+                    headers={"Accept": "application/rdap+json,application/json"}
+                ) as resp:
+                    if resp.status == 200:
+                        return await resp.json(content_type=None)
+            except Exception:
+                return None
+            return None
+
+        results = await asyncio.gather(
+            *[query_registry(r) for r in self.RDAP_REGISTRIES],
+            return_exceptions=True
+        )
+
+        asn = None
+        asn_name = None
+        for result in results:
+            if isinstance(result, Exception) or result is None:
+                continue
+            # Try to extract ASN from RDAP response
+            # Common paths: result["handle"], result["autnums"][0]["handle"]
+            if "handle" in result:
+                asn = str(result["handle"])
+                break
+            if "autnums" in result and result["autnums"]:
+                asn = str(result["autnums"][0].get("handle", ""))
+                asn_name = result["autnums"][0].get("name", "")
+                break
+            # Some registries put it in "links" or "networks"
+            if "networks" in result and result["networks"]:
+                asn = f"AS_{target_ip}"  # fallback
+                break
+
+        if asn:
+            node_attrs = {"type": "asn"}
+            if asn_name:
+                node_attrs["name"] = asn_name
+            self.graph.add_node(asn, **node_attrs)
+            self.graph.add_edge(
+                self.candidate.candidate_domain, asn,
+                edge_type="routing",
+                observed_at=time.time()
+            )
+            self.thread_results["bgp"] = "success"
+        else:
+            self.thread_results["bgp"] = "no_asn_found"
 
     def _set_domain_age_from_string(self, date_str: str | None) -> None:
         if not date_str:

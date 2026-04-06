@@ -3,22 +3,16 @@ from difflib import SequenceMatcher
 from urllib.parse import urlparse
 from typing import Dict, List, Tuple
 
+from app.services.corpus_manager import corpus
+
 logger = logging.getLogger(__name__)
 
+BRANDS = corpus.brands
+KEYWORDS = corpus.keywords
 
 class HeuristicEngine:
     def __init__(self):
-        # List of brands often targeted by phishing (Report Section 4.6.2)      
-        self.TARGET_BRANDS = [
-            "google", "facebook", "amazon", "paypal",
-            "microsoft", "instagram", "netflix", "linkedin", "apple"
-        ]
-
-        # Keywords common in phishing paths (Report Section 4.6.3)
-        self.SUSPICIOUS_KEYWORDS = [
-            "login", "verify", "update", "secure",
-            "account", "banking", "confirm", "signin", "wallet"
-        ]
+        pass
 
     def analyze(self, url_components: Dict) -> Dict:
         """
@@ -66,7 +60,7 @@ class HeuristicEngine:
         Check if domain is similar to popular brands.
         Returns (score_penalty, reason)
         """
-        for brand in self.TARGET_BRANDS:
+        for brand in BRANDS:
             similarity = SequenceMatcher(None, domain.lower(), brand).ratio()   
 
             # If very similar but not exact (e.g., "paypa1" vs "paypal")        
@@ -84,7 +78,7 @@ class HeuristicEngine:
             return (0, "")
 
         path_lower = path.lower()
-        found_keywords = [kw for kw in self.SUSPICIOUS_KEYWORDS if kw in path_lower]
+        found_keywords = [kw for kw in KEYWORDS if kw in path_lower]
 
         if found_keywords:
             logger.info(f"Suspicious keywords found in path: {found_keywords}") 

@@ -19,6 +19,17 @@ from app.services.tgis_aggregator import TGISAggregator
 
 logger = logging.getLogger(__name__)
 
+def make_json_safe(obj):
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_safe(i) for i in obj]
+    elif hasattr(obj, 'item'):  # numpy scalar
+        return obj.item()
+    elif hasattr(obj, 'tolist'):  # numpy array
+        return obj.tolist()
+    return obj
+
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
@@ -136,7 +147,7 @@ async def scan(request: Request, payload: URLRequest, db: DatabaseService = Depe
                 expected_edges={k: baselines.get(k, 0.0) for k in
                                 ["infrastructure", "certificate", "ownership", "routing"]}
             )
-            graph_json_dict = nx.node_link_data(graph)
+            graph_json_dict = make_json_safe(nx.node_link_data(graph))
 
         siblings = []
         if not blacklist_hit and scp_result and scp_calc:
@@ -155,7 +166,7 @@ async def scan(request: Request, payload: URLRequest, db: DatabaseService = Depe
             url=str(payload.url),
             status=verdict.status,
             risk_score=verdict.risk_score,
-            verdict_source=verdict.verdict_source,
+            source=verdict.verdict_source,
             tgis_score=verdict.tgis_score
         )
 
@@ -175,17 +186,41 @@ async def scan(request: Request, payload: URLRequest, db: DatabaseService = Depe
             verdict_source=verdict.verdict_source,
             reasons=verdict.reasons,
             recommendation=verdict.recommendation,
-            tgis_score=verdict.tgis_score,
-            tis_score=tis_result.tis_score if tis_result else None,
-            scp_score=scp_result.scp_score if scp_result else None,
-            residual_heuristic=residual_r,
-            domain_age_days=verdict.domain_age_days,
-            scp_activated=verdict.scp_activated,
-            siblings=siblings,
+            tgis_score=float(verdict.tgis_score or 0.0),
+            tis_score=float(tis_result.tis_score if tis_result else 0.0),
+            scp_score=float(scp_result.scp_score if scp_result else 0.0),
+            residual_heuristic=float(residual_r or 0.0),
+            domain_age_days=float(getattr(builder, 'domain_age_days', 1.0) or 1.0),
+            scp_activated=bool(scp_result.scp_activated if scp_result else False),
+            siblings=siblings or [],
             graph_summary=graph_summary,
             graph_json=graph_json_dict,
             details=details
         )
+
+class FeedbackRequest(BaseModel):
+    url: str
+    original_status: str
+    corrected_status: str
+    analyst_note: str = ""
+
+@router.post("/feedback")
+async def submit_feedback(payload: FeedbackRequest, db = Depends(get_db)):
+    if payload.corrected_status not in ["safe", "suspicious", "malicious"]:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Invalid corrected_status")
+    
+    row_id = db.submit_feedback(
+        url=payload.url,
+        original_status=payload.original_status,
+        corrected_status=payload.corrected_status,
+        note=payload.analyst_note
+    )
+    return {"success": True, "feedback_id": row_id}
+
+@router.get("/feedback")
+async def get_feedback(limit: int = 50, db = Depends(get_db)):
+    return db.get_feedback(limit=limit)
 
     except HTTPException:
         raise
@@ -196,3 +231,20 @@ async def scan(request: Request, payload: URLRequest, db: DatabaseService = Depe
             "stage": "unknown",
             "url": str(payload.url)
         })
+
+
+@router.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "pipeline": "TGIS v2",
+        "timestamp": time.time()
+    }
+
+@router.get("/history")
+async def get_history(limit: int = 20, db: DatabaseService = Depends(get_db)):  
+    return db.get_recent_history(limit=min(limit, 100))
+
+@router.get("/stats")
+async def get_stats(db: DatabaseService = Depends(get_db)):
+    return db.get_stats()

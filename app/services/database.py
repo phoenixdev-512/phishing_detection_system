@@ -7,6 +7,9 @@ logger = logging.getLogger(__name__)
 
 
 class PhishingDatabase:
+    def get_recent_history(self, limit=20):
+        return self.get_recent_scans(limit)
+
     def __init__(self, db_path="phishing_db.sqlite"):
         self.db_path = db_path
         self.cache = set()
@@ -68,6 +71,19 @@ class PhishingDatabase:
                 scp_score   REAL,
                 fetched_at  REAL NOT NULL,
                 ttl_seconds INTEGER DEFAULT 300
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS analyst_feedback (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_history_id INTEGER,
+                url             TEXT NOT NULL,
+                original_status TEXT NOT NULL,
+                corrected_status TEXT NOT NULL,
+                analyst_note    TEXT,
+                submitted_at    REAL NOT NULL,
+                FOREIGN KEY (scan_history_id) REFERENCES scan_history(id)
             )
         ''')
 
@@ -295,5 +311,48 @@ class PhishingDatabase:
         except Exception as e:
             logger.error(f"set_graph error: {e}")
 
+    # ------------------------------------------------------------------
+    # Feedback methods
+    # ------------------------------------------------------------------
+
+    def submit_feedback(self, url: str, original_status: str,
+                        corrected_status: str, note: str = "") -> int:
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO analyst_feedback 
+                   (url, original_status, corrected_status, analyst_note, submitted_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (url, original_status, corrected_status, note, time.time())
+            )
+            row_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return row_id
+        except Exception as e:
+            logger.error(f"submit_feedback error: {e}")
+            return -1
+
+    def get_feedback(self, limit: int = 50) -> list[dict]:
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM analyst_feedback ORDER BY submitted_at DESC LIMIT ?",
+                (limit,)
+            )
+            rows = cursor.fetchall()
+            conn.close()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"get_feedback error: {e}")
+            return []
+
 
 db_service = PhishingDatabase()
+
+DatabaseService = PhishingDatabase
+def get_db():
+    return db_service
