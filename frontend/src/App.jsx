@@ -26,13 +26,13 @@ export default function App() {
       <nav className="border-b border-tgis-border bg-tgis-panel px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">??</span>
+            <span className="text-2xl">TGIS</span>
             <div>
               <h1 className="text-lg font-black text-tgis-text tracking-tight">
                 PHISHING DETECTION SYSTEM
               </h1>
               <p className="text-xs text-tgis-muted">
-                TGIS v2 · Temporal Graph Isolation Scoring
+                TGIS
               </p>
             </div>
           </div>
@@ -54,7 +54,7 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* SCAN FORM — always visible at top */}
+        {/* SCAN FORM  always visible at top */}
         <div className="mb-8">
           <ScanForm onScan={scan} loading={loading} />
         </div>
@@ -86,7 +86,7 @@ export default function App() {
       {/* FOOTER */}
       <footer className="border-t border-tgis-border mt-16 py-6 text-center">
         <p className="text-xs text-tgis-muted">
-          TGIS · Temporal Graph Isolation Scoring Engine ·
+          TGIS  Temporal Graph Isolation Scoring Engine 
           Infrastructure-based phishing detection
         </p>
       </footer>
