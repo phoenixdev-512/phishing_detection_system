@@ -1,0 +1,95 @@
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+*.so
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+.hypothesis/
+
+# ── Virtual environments ─────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+.env.local
+.env.*.local
+
+# ── Node / Frontend ──────────────────────────────────────────
+frontend/node_modules/
+frontend/.vite/
+# NOTE: frontend/dist/ is intentionally NOT ignored here.
+# The multi-stage build copies it from the frontend-builder stage,
+# not from the host. But if you ever do a local build and want to
+# exclude it from context: uncomment the line below.
+# frontend/dist/
+
+# ── Test artifacts ───────────────────────────────────────────
+tests/
+e2e/
+*.spec.js
+*.test.js
+*.test.jsx
+playwright-report/
+test-results/
+
+# ── Database files (never bake into image) ───────────────────
+*.sqlite
+*.sqlite3
+*.db
+/data/
+
+# ── Git ──────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Docker ───────────────────────────────────────────────────
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# ── Documentation ────────────────────────────────────────────
+*.md
+docs/
+DIAGRAMS.md
+DEPLOYMENT.md
+SYSTEM_DOCUMENTATION.md
+
+# ── CI ───────────────────────────────────────────────────────
+.github/
+.gitlab-ci.yml
+
+# ── Misc ─────────────────────────────────────────────────────
+*.log
+*.tmp
+.env
+.env.*
+setup.sh
+e2e_smoke_test.sh
