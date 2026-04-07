@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import networkx as nx
-
+from app.services.tgis_aggregator import TGISAggregator
+from pydantic import BaseModel
 from app.core.config import settings
 from app.schemas.url_schema import AnalysisResult, SiblingDomain, GraphSummary, URLRequest
 from app.services.preprocessing import extract_candidate_domain
@@ -15,7 +16,7 @@ from app.services.egd_model import EGDModel
 from app.services.tis_calculator import TISCalculator, TISResult
 from app.services.scp_calculator import SCPCalculator, SCPResult
 from app.services.heuristics import heuristic_engine
-from app.services.tgis_aggregator import TGISAggregator
+from app.services.tgis_aggregator import TGISAggregator\
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +198,13 @@ async def scan(request: Request, payload: URLRequest, db: DatabaseService = Depe
             graph_json=graph_json_dict,
             details=details
         )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions to be handled by FastAPI
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during scan: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error during scan.")
 
 class FeedbackRequest(BaseModel):
     url: str
@@ -218,19 +226,12 @@ async def submit_feedback(payload: FeedbackRequest, db = Depends(get_db)):
     )
     return {"success": True, "feedback_id": row_id}
 
+
 @router.get("/feedback")
 async def get_feedback(limit: int = 50, db = Depends(get_db)):
     return db.get_feedback(limit=limit)
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unhandled exception in scan endpoint: {e}", exc_info=True)
-        raise HTTPException(500, detail={
-            "error": str(e),
-            "stage": "unknown",
-            "url": str(payload.url)
-        })
+   
 
 
 @router.get("/health")

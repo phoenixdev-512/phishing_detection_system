@@ -41,7 +41,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Python dependencies ──────────────────────────────────────
 # Copy requirements first — layer is cached unless requirements.txt changes
 COPY requirements.txt .
-RUN cat requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
@@ -101,3 +100,4 @@ COPY --chown=tgis:tgis docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["--workers", "2", "--log-level", "info"]
