@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Python dependencies ──────────────────────────────────────
 # Copy requirements first — layer is cached unless requirements.txt changes
 COPY requirements.txt .
+RUN cat requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
