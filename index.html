@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phishing Detection System - Educational Guide</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1>🛡️ Phishing Detection System</h1>
+            <p class="subtitle">Learn How to Identify and Protect Against Phishing Attacks</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="intro-section">
+            <h2>What is Phishing?</h2>
+            <p>Phishing is a type of cyber attack where attackers impersonate legitimate organizations to trick individuals into revealing sensitive information such as passwords, credit card numbers, or personal data.</p>
+        </section>
+
+        <section class="warning-signs">
+            <h2>🚨 Warning Signs of Phishing URLs</h2>
+            <div class="signs-grid">
+                <div class="sign-card danger">
+                    <h3>1. Suspicious Domain Names</h3>
+                    <p><strong>Watch out for:</strong></p>
+                    <ul>
+                        <li>Misspelled company names (e.g., "microosft.com")</li>
+                        <li>Extra words or characters (e.g., "paypal-secure.com")</li>
+                        <li>Unusual domain extensions (e.g., ".tk", ".cc")</li>
+                    </ul>
+                    <div class="example">
+                        <p class="bad">❌ Bad: amaz0n-security.tk</p>
+                        <p class="good">✅ Good: amazon.com</p>
+                    </div>
+                </div>
+
+                <div class="sign-card danger">
+                    <h3>2. IP Address Instead of Domain</h3>
+                    <p><strong>Legitimate sites use domain names, not IP addresses</strong></p>
+                    <div class="example">
+                        <p class="bad">❌ Bad: http://203.0.113.45/login</p>
+                        <p class="good">✅ Good: https://www.bank.com/login</p>
+                    </div>
+                </div>
+
+                <div class="sign-card danger">
+                    <h3>3. Missing HTTPS/SSL</h3>
+                    <p><strong>Secure sites use HTTPS with a padlock icon</strong></p>
+                    <ul>
+                        <li>Check for "https://" at the start</li>
+                        <li>Look for the padlock icon in the address bar</li>
+                        <li>Be cautious with "http://" (no 's')</li>
+                    </ul>
+                </div>
+
+                <div class="sign-card danger">
+                    <h3>4. Unusual URL Length</h3>
+                    <p><strong>Phishing URLs are often very long</strong></p>
+                    <p>Attackers hide malicious links with excessive characters and redirects.</p>
+                    <div class="example">
+                        <p class="bad">❌ Bad: Extremely long URLs with many parameters</p>
+                        <p class="good">✅ Good: Short, clean URLs</p>
+                    </div>
+                </div>
+
+                <div class="sign-card danger">
+                    <h3>5. Shortened URLs</h3>
+                    <p><strong>URL shorteners can hide the real destination</strong></p>
+                    <ul>
+                        <li>bit.ly/xyz123</li>
+                        <li>tinyurl.com/abc</li>
+                        <li>goo.gl/short</li>
+                    </ul>
+                    <p class="note">⚠️ Hover before clicking to see the real destination</p>
+                </div>
+
+                <div class="sign-card danger">
+                    <h3>6. Deceptive Subdomains</h3>
+                    <p><strong>The real domain comes before the first '/'</strong></p>
+                    <div class="example">
+                        <p class="bad">❌ Bad: paypal.fake-site.com (domain: fake-site.com)</p>
+                        <p class="good">✅ Good: secure.paypal.com (domain: paypal.com)</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="protection-tips">
+            <h2>🔒 How to Protect Yourself</h2>
+            <div class="tips-grid">
+                <div class="tip-card">
+                    <h3>1. Verify the Sender</h3>
+                    <p>Always check the sender's email address and domain carefully.</p>
+                </div>
+                <div class="tip-card">
+                    <h3>2. Don't Click Suspicious Links</h3>
+                    <p>Hover over links to preview the destination before clicking.</p>
+                </div>
+                <div class="tip-card">
+                    <h3>3. Type URLs Directly</h3>
+                    <p>Instead of clicking links, type the website address directly in your browser.</p>
+                </div>
+                <div class="tip-card">
+                    <h3>4. Use Multi-Factor Authentication</h3>
+                    <p>Add an extra layer of security to your accounts.</p>
+                </div>
+                <div class="tip-card">
+                    <h3>5. Keep Software Updated</h3>
+                    <p>Update your browser and security software regularly.</p>
+                </div>
+                <div class="tip-card">
+                    <h3>6. Report Suspicious Emails</h3>
+                    <p>Report phishing attempts to your IT department or email provider.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="examples-section">
+            <h2>📊 Real-World Examples</h2>
+            <div class="example-container">
+                <div class="url-example malicious">
+                    <h4>Malicious URL Example</h4>
+                    <code>http://paypa1-secure-login.suspicious-site.tk/verify?user=12345</code>
+                    <div class="red-flags">
+                        <p><strong>Red Flags:</strong></p>
+                        <ul>
+                            <li>❌ No HTTPS (insecure)</li>
+                            <li>❌ Misspelled "PayPal" (paypa1)</li>
+                            <li>❌ Suspicious TLD (.tk)</li>
+                            <li>❌ Asks for verification</li>
+                            <li>❌ Long, complex URL</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="url-example safe">
+                    <h4>Legitimate URL Example</h4>
+                    <code>https://www.paypal.com/signin</code>
+                    <div class="green-flags">
+                        <p><strong>Green Flags:</strong></p>
+                        <ul>
+                            <li>✅ Uses HTTPS (secure)</li>
+                            <li>✅ Correct domain name</li>
+                            <li>✅ Trusted TLD (.com)</li>
+                            <li>✅ Simple and direct</li>
+                            <li>✅ Short URL</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="stats-section">
+            <h2>📈 Phishing Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">90%</div>
+                    <p>of data breaches start with phishing</p>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">3.4B</div>
+                    <p>phishing emails sent daily</p>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">30%</div>
+                    <p>of phishing emails get opened</p>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">$4.65M</div>
+                    <p>average cost of a data breach</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="checklist-section">
+            <h2>✅ Quick Safety Checklist</h2>
+            <div class="checklist">
+                <div class="checklist-item">
+                    <span class="check">☑</span>
+                    <p>Does the URL start with "https://"?</p>
+                </div>
+                <div class="checklist-item">
+                    <span class="check">☑</span>
+                    <p>Is the domain spelled correctly?</p>
+                </div>
+                <div class="checklist-item">
+                    <span class="check">☑</span>
+                    <p>Do I recognize the domain extension (.com, .org, etc.)?</p>
+                </div>
+                <div class="checklist-item">
+                    <span class="check">☑</span>
+                    <p>Is the URL length reasonable?</p>
+                </div>
+                <div class="checklist-item">
+                    <span class="check">☑</span>
+                    <p>Am I expecting this email/message?</p>
+                </div>
+                <div class="checklist-item">
+                    <span class="check">☑</span>
+                    <p>Does the message create urgency or fear?</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 Phishing Detection System - Educational Resource</p>
+            <p>Stay safe online by being vigilant and informed</p>
+        </div>
+    </footer>
+</body>
+</html>
